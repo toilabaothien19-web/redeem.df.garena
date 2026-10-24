@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "DF Code Garena",
+  "version": "1.9.2",
+  "description": "Nhập danh sách code Delta Force trên trang đổi quà Garena. Chỉ chạy khi trang đó đang mở.",
+  "incognito": "split",
+  "permissions": ["storage", "scripting", "activeTab"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Nhập code Delta Force",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "sw.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'none'"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://redeem.df.garena.sg/*/cdkgarena.html*",
+        "https://redeem.df.garena.sg/cdkgarena.html*"
+      ],
+      "js": ["inject.js"],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://redeem.df.garena.sg/*/cdkgarena.html*",
+        "https://redeem.df.garena.sg/cdkgarena.html*"
+      ],
+      "js": ["parser.js", "runner.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}

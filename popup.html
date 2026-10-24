@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DF Code Garena</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="top">
+      <img class="mark" src="icons/icon48.png" alt="" width="36" height="36" />
+      <div class="titles">
+        <h1>Nhập code Delta Force</h1>
+        <p class="ver">Phiên bản 1.9.2</p>
+        <p id="status">Đang kiểm tra trang…</p>
+      </div>
+    </header>
+
+    <label for="codes">Danh sách code</label>
+    <textarea
+      id="codes"
+      rows="7"
+      spellcheck="false"
+      placeholder="Mỗi dòng một code. Dán trực tiếp hoặc mở file .txt. Dòng bắt đầu bằng # được bỏ qua."
+    ></textarea>
+
+    <div class="row tools">
+      <button type="button" id="pick">Mở file .txt</button>
+      <button type="button" id="demo">Demo Code</button>
+      <button type="button" id="clearCodes">Xóa toàn bộ</button>
+      <input id="file" type="file" accept=".txt,text/plain" hidden />
+      <p id="count" class="count">0 code</p>
+    </div>
+
+    <ul class="stats" id="stats">
+      <li><b id="statHave">0</b><span>đang có</span></li>
+      <li class="ok"><b id="statOk">0</b><span>thành công</span></li>
+      <li class="bad"><b id="statBad">0</b><span>lỗi</span></li>
+    </ul>
+
+    <div id="gapBlock" class="fold is-closed" inert>
+      <div class="fold-inner">
+        <label for="gap">Khoảng cách giữa mỗi lần nhập</label>
+        <div class="row gap-row">
+          <input id="gap" type="range" min="5" max="60" step="1" value="15" />
+          <output id="gapValue" for="gap">15 giây</output>
+        </div>
+      </div>
+    </div>
+    <div id="randomWrap" class="fold is-closed" inert>
+      <div class="fold-inner">
+        <label class="check" id="randomLabel">
+          <input id="randomGap" type="checkbox" />
+          <span>Nghỉ ngẫu nhiên từ 10 đến 15 giây</span>
+        </label>
+      </div>
+    </div>
+    <p id="eta" class="hint">Chưa có code để ước tính.</p>
+
+    <label class="check" id="protectLabel">
+      <input id="protect" type="checkbox" checked />
+      <span>Bảo vệ tài khoản: nghỉ ngẫu nhiên 20–30 giây, dừng sau 30 code hoặc 5 lỗi liên tiếp</span>
+    </label>
+    <p id="gapHint" class="hint">Mỗi code sau nghỉ ngẫu nhiên từ 20 đến 30 giây. Code đầu nhập ngay.</p>
+    <p class="hint">Không thể cam kết tài khoản không bị khóa. Tiện ích chỉ nhập chậm hơn và dừng khi trang báo giới hạn, xác minh hoặc khóa.</p>
+    <label class="check">
+      <input id="skipOk" type="checkbox" checked />
+      <span>Bỏ qua code đã có trong log, cả code đã nhập lẫn code lỗi</span>
+    </label>
+
+    <div class="row">
+      <button type="button" id="start" class="primary" disabled>Bắt đầu</button>
+      <button type="button" id="stop" disabled>Dừng</button>
+    </div>
+    <p id="progress" class="progress">Chưa chạy.</p>
+
+    <div class="row tools">
+      <button type="button" id="export" disabled>Xuất log</button>
+      <button type="button" id="importLog">Tải log lên</button>
+      <input id="logFile" type="file" accept=".txt,text/plain" hidden />
+      <button type="button" id="clearLog" disabled>Xóa log</button>
+    </div>
+    <p class="hint">Không nhúng mã bên ngoài, không gửi dữ liệu đi đâu, không lưu cookie hay tên đăng nhập. Nhật ký giữ nguyên câu trang và câu máy chủ gửi.</p>
+    <ul id="log" class="log"></ul>
+
+    <script id="demoSource" type="text/plain">
+DFclover812
+DFASCEND72
+ReturningWarrior3
+ReturningWarrior1
+ReturningWarrior2
+N4SQWgxYcHw7gUci3bJy
+Top1BXHVN
+A5Z1NDW8K3PJLU
+DFUTWQ230897
+DFUTWQ230872
+DFUTWQ230879
+DFAMMX96
+DFBAEXP67
+DFSL1983
+DFUZI777
+DFUTWQ200838
+DFUTWQ200880
+DFUTWQ200889
+DFUTWQ220857
+DFUTWQ220831
+DFUTWQ220811
+DFISTARRY939
+DFLUISHERE
+DFGKTK34
+DFSL2793
+DFAPEX835
+DFUTWQ210810
+DFUTWQ210833
+DFUTWQ210862
+DFSL9304
+DFSL2823
+DFSL5029
+DFSL6257
+DFHOLIDAY421
+DFSL7789
+DFSL4791
+DFVICTORY11
+DFWEAPON91
+PzDArbxYuL2f6RcaWE7T
+DFUT2025FINALS4216
+DFaura371
+DFCOHERENCE35
+DFUZIRAT47
+DFENERGY33
+DFASSAULT55
+DFSTEALTH44
+DFOS3Y8KLM
+DFOSB6T3WZ
+DFOS9R2HXC
+POC3005S19
+AKHIPFIRERIP
+P90FFF
+AUGTUTO
+VUADIVUANHAY
+DAISUAK12YOR
+SKSMINHUN
+DFVNHackclaw1
+DFVNVyron2
+DFVNUluru3
+DFVNToxik4
+DFVNNox5
+DFVNSineva6
+SsCkDfxY5AkdZqiJLkXq
+msz7hMxYyGhjp8ay7HpK
+MOILOOT98
+MOILOOT23
+WELCOMETODF
+ANIMALCUPTANK
+ANIMALCUPGUN
+DFANIMALCUP
+DFSL4412
+DFSL3145
+DFSL7183
+DFSL9108
+DFLUVUU282
+DFBLKT42
+DFADVN74
+DFATLA73
+DFWPNX36
+DFCARRAT52
+DFSL8019
+DFSL1629
+DFRIDEORDIE5215
+DFRIDEORDIE4078
+PWC260418S84
+JGHMCmxYa6PLcFgvD9mg
+DFOS2ZK8VA
+DFharbor738
+DFSH428
+DFvoyage901
+DFsymphony104
+DFCATALYST87
+DFclarity152
+DFUT2025PLAYOFF5910
+MOILOOT92
+MOILOOT55
+MOILOOT68
+fvzeLrxYajwVviFSTSZ
+aCuQjtxY7vXGjxCTBnQU
+10KSUBSYOUTUBEDFRTNK
+DFakaonikou
+PWC260419S65
+DFELEVATE16
+DFAWAKEN56
+PWC260418S11
+PWC260418S72
+PWC260419S67
+PWC260419S84
+DFCCOPNOW111
+DFCCOPGIST88
+DFCCOPWOR1D
+DFCCOPTOBE03
+DFCCOPPL4Y3R5
+DFOSS260405B69
+DFOSS260405B58
+DFOSS260405B36
+DFBrilliant165
+DF1314754
+DFOSL5Q7MN
+DFOSB4N9RD
+PWC260418S79
+DFbeacon030
+DFCL503
+DFanchor945
+DFDragon504
+DFCONCORD82
+daichienboba6228
+daichienboba2719
+daichienboba6167
+daichienmobile7095
+daichienmobile3325
+daichienmobile7362
+DFOutstanding056
+DFReliable732
+DFForever395
+DFExcellent659
+DFRemarkable103
+DFessence982
+DFSpark119
+DFUltra220
+DFGalaxy250
+DFHorizon503
+DFNinja874
+DFRainbow356
+DFFlash260
+DFoasis407
+DFeternity717
+DFFantasy742
+DFRocket825
+DFHeroic668
+DFWizard309
+DFpromise643
+DFceleste516
+DFvivid061
+DFRL1017
+DFjubilee594
+DFmomentum423
+DFHORIZON91
+DFINSIGHT48
+DFRESOLVE19
+DFEMBARK63
+DFmoment479
+DFPARAGON41
+DFGENESIS05
+DFAXIOM33
+DFUT2025FINALS1549
+DFUT2025PLAYOFF9163
+DFUT2025PLAYOFF2509
+DFUT2025PLAYOFF4827
+DFUT2025PLAYOFF8051
+DFUT2025PLAYOFF5732
+DFUT2025PLAYOFF1276
+GADFZebra
+DFOSS260404B57
+DFOSS260404B63
+DFOSS260404B47
+DFOSS260403B21
+DFOSS260403B33
+DFOSS260403B81
+DFOS7K2M9Q
+DFOS4XJ8PL
+DFOSW4D1YP
+DFsolace241
+DFUTW260412S95
+DFUTW260412S36
+DFUTW260412S99
+PWC260419S21
+HEDELTAFORCE3630
+HEDELTAFORCE4583
+HEDELTAFORCE7563
+HEDELTAFORCE8781
+DFFILE274
+DFTRNG469
+DFWEEK237
+MOILOOT48
+MOILOOT02
+MOILOOT04
+MOILOOT60
+MOILOOT45
+DFCRAFT427
+DFPACK293
+DFARMX46
+DFAMMO08
+DFTURING09
+HEDELTAFORCE8032
+HEDELTAFORCE9026
+MOILOOT65
+MOILOOT79
+TRILLIONRAID1000
+TRILLIONRAID600
+TRILLIONRAID300
+POC3105S95
+POC3105S96
+POC3105S73
+POC3105S64
+POC3105S31
+POC3105S90
+POC3005S52
+POC3005S99
+POC3005S59
+POC3005S53
+POC3005S51
+DFWITNESS77
+DFOS3FZ9LK
+DFOS7Q2VXA
+DFExceptional305
+DFVANGUARD76
+85ewN4xYbJfncPKbADR
+DFserene218
+DFMagic057
+TrickOrTreat
+DFEnergy428
+HITTHEROADTODFI
+POCS2S2
+WHOISPOCKING
+POCISHERE
+POCSEEYOUTMR
+DFTURBRK41
+RCA812
+22DFResCup
+812RCB
+RCL813
+DeltaForceRC777
+11ResCupDF
+</script>
+    <script src="parser.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
