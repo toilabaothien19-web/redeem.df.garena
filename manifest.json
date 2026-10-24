@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "DF Code Garena",
-  "version": "1.9.2",
+  "version": "1.9.3",
   "description": "Nhập danh sách code Delta Force trên trang đổi quà Garena. Chỉ chạy khi trang đó đang mở.",
   "incognito": "split",
   "permissions": ["storage", "scripting", "activeTab"],

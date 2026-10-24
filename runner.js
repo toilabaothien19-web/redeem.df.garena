@@ -68,7 +68,10 @@
           finish({ source: "pong" });
           return;
         }
-        if (data.kind === "result") finish(cleanResult(data.result));
+        if (data.kind === "result") {
+          if (payload && payload.code && data.code !== payload.code) return;
+          finish(cleanResult(data.result));
+        }
       }
       function finish(result) {
         clearTimeout(timer);

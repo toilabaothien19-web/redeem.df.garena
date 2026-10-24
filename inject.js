@@ -16,7 +16,7 @@
     var value = String(url || "");
     if (!value || value.length > 2000) return false;
     var path = value.split("?")[0];
-    return /RedeemCDKey/i.test(path) || /[?&]cdkey=/i.test(value);
+    return /RedeemCDKey/i.test(path);
   }
 
   function bodyVerdict(body, code) {
@@ -33,15 +33,20 @@
       text = typeof named === "string" ? "cdkey=" + named : "";
     }
     if (!text) return "unknown";
-    if (text.indexOf(code) !== -1) return "ours";
-    var found = text.match(/cdkey["']?\s*[:=]\s*["']?([A-Za-z0-9_-]{4,80})/i);
-    if (found && found[1] !== code) return "foreign";
+    var found = text.match(/(?:cdkey|cdk|sCdkey)["']?\s*[:=]\s*["']?([A-Za-z0-9_-]{4,80})/i);
+    if (found) return found[1] === code ? "ours" : "foreign";
     return "unknown";
+  }
+
+  function urlCode(url) {
+    var found = String(url || "").match(/[?&](?:cdkey|cdk)=([^&#]+)/i);
+    if (!found) return "";
+    try { return decodeURIComponent(found[1]); } catch (e) { return found[1]; }
   }
 
   function pickRaw(parsed) {
     var out = {};
-    if (!parsed || typeof parsed !== "object") return { msg: "Phản hồi không đọc được." };
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return out;
     var code = parsed.code;
     if (code == null) code = parsed.ret;
     if (code == null) code = parsed.iRet;
@@ -49,14 +54,17 @@
     if (code == null) code = parsed.errcode;
     if (typeof code === "number" && isFinite(code)) out.code = code;
     else if (typeof code === "string" && /^-?\d{1,8}$/.test(code)) out.code = Number(code);
-    if (typeof msg !== "string" || !msg) return out;
-    out.msg = msg.replace(/\s+/g, " ").trim().slice(0, 500);
+    var nested = parsed.data && typeof parsed.data === "object" && !Array.isArray(parsed.data) ? parsed.data : {};
+    var msg = parsed.msg || parsed.message || parsed.sMsg || parsed.errMsg || parsed.desc || parsed.sMessage || nested.msg || nested.message || nested.sMsg || "";
+    if (typeof msg !== "string") msg = "";
+    msg = msg.replace(/\s+/g, " ").trim().slice(0, 500);
+    if (msg) out.msg = msg;
     return out;
   }
 
   function parsePayload(text) {
     var raw = String(text || "").trim().slice(0, 4000);
-    if (!raw || raw.charAt(0) === "<") return { msg: "Phản hồi không đọc được." };
+    if (!raw || raw.charAt(0) === "<") return {};
     try {
       return pickRaw(JSON.parse(raw));
     } catch (e) {}
@@ -66,29 +74,38 @@
         return pickRaw(JSON.parse(wrapped[1]));
       } catch (e2) {}
     }
-    if (raw.charAt(0) === "{" || raw.length > 240) return { msg: "Phản hồi không đọc được." };
+    if (raw.charAt(0) === "{" || raw.length > 240) return {};
     return { msg: raw.replace(/\s+/g, " ").trim().slice(0, 240) };
   }
 
-  function takeResponse(url, body, text) {
-    if (!pending || pending.raw || !isRedeemUrl(url)) return;
+  function takeResponse(url, body, text, at) {
+    if (!pending || !pending.armed || pending.raw) return;
+    if (!isRedeemUrl(url)) return;
+    if (at && at < pending.since) return;
     if (bodyVerdict(body, pending.code) === "foreign") return;
-    pending.raw = parsePayload(text) || { msg: "Phản hồi rỗng." };
+    var named = urlCode(url);
+    if (named && named !== pending.code) return;
+    var parsed = parsePayload(text);
+    if (!parsed || (parsed.code == null && !parsed.msg)) return;
+    pending.raw = parsed;
   }
 
   var originalOpen = XMLHttpRequest.prototype.open;
   var originalSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (method, url) {
-    if (isRedeemUrl(url)) this.__dfUrl = String(url);
+    if (isRedeemUrl(url)) {
+      this.__dfUrl = String(url);
+      this.__dfAt = Date.now();
+    }
     return originalOpen.apply(this, arguments);
   };
   XMLHttpRequest.prototype.send = function (body) {
     var xhr = this;
     if (xhr.__dfUrl) {
+      var sentAt = xhr.__dfAt || Date.now();
       xhr.addEventListener("load", function () {
         try {
-          if (!pending || pending.raw || !xhr.__dfUrl) return;
-          takeResponse(xhr.__dfUrl, body, xhr.responseText);
+          takeResponse(xhr.__dfUrl, body, xhr.responseText, sentAt);
         } catch (e) {}
       });
     }
@@ -99,13 +116,14 @@
     var originalFetch = window.fetch;
     window.fetch = function (input, init) {
       var url = typeof input === "string" ? input : input && input.url ? input.url : "";
+      var startedAt = Date.now();
       var body = init && init.body;
       var pendingResponse = originalFetch.apply(this, arguments);
-      if (pending && isRedeemUrl(url) && bodyVerdict(body, pending.code) !== "foreign") {
+      if (pending && pending.armed && startedAt >= pending.since && isRedeemUrl(url) && bodyVerdict(body, pending.code) !== "foreign") {
         pendingResponse.then(function (response) {
           try {
             response.clone().text().then(function (text) {
-              takeResponse(url, body, text);
+              takeResponse(url, body, text, startedAt);
             }).catch(function () {});
           } catch (e) {}
         }).catch(function () {});
@@ -182,9 +200,11 @@
       return { source: "ui", text: "Trang đang yêu cầu xác minh. Dừng để không tiếp tục tự nhập." };
     }
     var before = snapshotDialog();
-    pending = { code: code, raw: null };
+    pending = { code: code, raw: null, armed: false, since: 0 };
     setInput(ui.input, code);
     await sleep(400 + Math.floor(Math.random() * 500));
+    pending.since = Date.now();
+    pending.armed = true;
     ui.button.click();
     var started = Date.now();
     while (Date.now() - started < 15000) {
@@ -254,7 +274,7 @@
     var code = String(data.code || "");
     if (!isSafeCode(code)) {
       window.postMessage(
-        { channel: CHANNEL, kind: "result", id: data.id, result: publicResult({ source: "ui", text: "Code không đúng định dạng." }) },
+        { channel: CHANNEL, kind: "result", id: data.id, code: code, result: publicResult({ source: "ui", text: "Code không đúng định dạng." }) },
         window.location.origin,
       );
       return;
@@ -263,11 +283,16 @@
     redeemOne(code).then(function (result) {
       busy = false;
       window.postMessage(
-        { channel: CHANNEL, kind: "result", id: data.id, result: publicResult(result) },
+        { channel: CHANNEL, kind: "result", id: data.id, code: code, result: publicResult(result) },
         window.location.origin,
       );
     }).catch(function () {
       busy = false;
+      pending = null;
+      window.postMessage(
+        { channel: CHANNEL, kind: "result", id: data.id, code: code, result: { source: "timeout" } },
+        window.location.origin,
+      );
     });
   });
 })();

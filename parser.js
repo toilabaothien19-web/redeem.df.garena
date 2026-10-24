@@ -190,7 +190,8 @@
 
   function describeDialog(text) {
     var detail = usableText(text);
-    var ok = /thành công|đổi thành công|success|兑换成功|兑换成功/i.test(detail);
+    var failed = /không thành công|khong thanh cong|thất bại|that bai|失败|invalid|không hợp lệ|khong hop le|error|lỗi|loi/i.test(detail);
+    var ok = !failed && /đổi thành công|thành công|success|兑换成功/i.test(detail);
     return { ok: ok, serverCode: null, detail: detail };
   }
 
