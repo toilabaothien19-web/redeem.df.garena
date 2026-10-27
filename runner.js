@@ -51,38 +51,72 @@
     } catch (e) {}
   }
 
+  var pagePort = null;
+  var pageReady = false;
+  var linking = null;
+  var waiters = Object.create(null);
+
+  function onPortMessage(event) {
+    var data = event.data;
+    if (!data || data.kind !== "result" || !data.id || !waiters[data.id]) return;
+    waiters[data.id](data);
+  }
+
+  function ensurePort() {
+    if (pageReady && pagePort) return Promise.resolve(true);
+    if (linking) return linking;
+    linking = new Promise(function (resolve) {
+      var tries = 0;
+      function attempt() {
+        if (pageReady) {
+          resolve(true);
+          return;
+        }
+        var channel = new MessageChannel();
+        var settled = false;
+        channel.port1.onmessage = function (event) {
+          if (event.data && event.data.kind === "ready" && !settled) {
+            settled = true;
+            pageReady = true;
+            pagePort = channel.port1;
+            pagePort.onmessage = onPortMessage;
+            resolve(true);
+            return;
+          }
+          onPortMessage(event);
+        };
+        window.postMessage({ channel: CHANNEL, kind: "hello" }, location.origin, [channel.port2]);
+        setTimeout(function () {
+          if (settled || pageReady) return;
+          tries += 1;
+          if (tries >= 20) resolve(false);
+          else attempt();
+        }, 100);
+      }
+      attempt();
+    });
+    return linking;
+  }
+
   function callPage(kind, payload, timeoutMs) {
     var bytes = new Uint8Array(12);
     crypto.getRandomValues(bytes);
     var id = Array.prototype.map.call(bytes, function (n) { return n.toString(16).padStart(2, "0"); }).join("");
-    return new Promise(function (resolve) {
-      var timer = setTimeout(function () {
-        window.removeEventListener("message", onMessage);
-        resolve({ source: "timeout" });
-      }, timeoutMs);
-      function onMessage(event) {
-        if (event.source !== window || event.origin !== location.origin) return;
-        var data = event.data;
-        if (!data || data.channel !== CHANNEL || data.id !== id) return;
-        if (kind === "ping" && data.kind === "pong") {
-          finish({ source: "pong" });
-          return;
-        }
-        if (data.kind === "result") {
+    return ensurePort().then(function (ready) {
+      if (!ready || !pagePort || kind !== "redeem") return { source: "unknown" };
+      return new Promise(function (resolve) {
+        var timer = setTimeout(function () {
+          delete waiters[id];
+          resolve({ source: "unknown" });
+        }, timeoutMs);
+        waiters[id] = function (data) {
           if (payload && payload.code && data.code !== payload.code) return;
-          finish(cleanResult(data.result));
-        }
-      }
-      function finish(result) {
-        clearTimeout(timer);
-        window.removeEventListener("message", onMessage);
-        resolve(result);
-      }
-      window.addEventListener("message", onMessage);
-      window.postMessage(
-        Object.assign({ channel: CHANNEL, kind: kind, id: id }, payload || {}),
-        location.origin,
-      );
+          clearTimeout(timer);
+          delete waiters[id];
+          resolve(cleanResult(data.result));
+        };
+        pagePort.postMessage(Object.assign({ kind: "redeem", id: id }, payload || {}));
+      });
     });
   }
 
@@ -92,7 +126,7 @@
     if (result.source === "dialog" || result.source === "ui") {
       return { source: result.source, text: DFParse.sanitizeText(result.text, 500) };
     }
-    if (result.source === "timeout" || result.source === "pong") return { source: result.source };
+    if (result.source === "timeout" || result.source === "unknown" || result.source === "pong") return { source: result.source === "pong" ? "unknown" : result.source };
     return { source: "timeout" };
   }
 
@@ -105,18 +139,19 @@
     var status = "error";
     var detail = "Không rõ kết quả.";
     var serverCode = null;
-    if (!result || result.source === "timeout") {
-      detail = "Hết thời gian chờ phản hồi (15 giây).";
+    if (!result || result.source === "timeout" || result.source === "unknown") {
+      status = "unknown";
+      detail = "Chưa xác định. Kiểm tra thủ công.";
     } else if (result.source === "ui") {
       detail = result.text || "Không thao tác được trên trang.";
     } else if (result.source === "dialog") {
       var fromDialog = DFParse.describeDialog(result.text);
-      status = fromDialog.ok ? "ok" : "error";
-      detail = fromDialog.detail;
+      status = fromDialog.status || (fromDialog.ok ? "ok" : "error");
+      detail = fromDialog.detail || detail;
     } else if (result.source === "api") {
       var fromApi = DFParse.describeApi(result.raw);
-      status = fromApi.ok ? "ok" : "error";
-      detail = fromApi.detail;
+      status = fromApi.status || (fromApi.ok ? "ok" : "error");
+      detail = fromApi.detail || (status === "unknown" ? "Chưa xác định. Kiểm tra thủ công." : detail);
       serverCode = fromApi.serverCode;
     }
     detail = DFParse.sanitizeText(detail, 500);
@@ -143,6 +178,7 @@
     var next = run || {};
     if (next.note) next.note = String(next.note).slice(0, 240);
     if (next.current && !DFParse.isCodeToken(next.current)) next.current = "";
+    next.updatedAt = Date.now();
     await storageSet({ "dfcode.run": next });
   }
 
@@ -172,32 +208,71 @@
     return !stopFlag;
   }
 
+  function resumePause() {
+    var tenths = 300 + Math.floor(Math.random() * 301);
+    return tenths / 10;
+  }
+
+  function formatTenth(seconds) {
+    return (Math.round(Number(seconds) * 10) / 10).toFixed(1).replace(".", ",");
+  }
+
+  async function waitResume(seconds, runBase) {
+    var ends = Date.now() + seconds * 1000;
+    while (true) {
+      if (stopFlag) return false;
+      var remain = Math.max(0, (ends - Date.now()) / 1000);
+      var shown = Math.round(remain * 10) / 10;
+      await setRun(
+        Object.assign({}, runBase, {
+          phase: "waiting",
+          waitLeft: shown,
+          note: "5 lỗi liên tiếp. Tự nhập tiếp sau " + formatTenth(shown) + " giây.",
+        }),
+      );
+      if (remain <= 0.05) return !stopFlag;
+      await sleepPiece(Math.min(100, Math.max(40, remain * 1000)));
+    }
+  }
+
   async function loop(queue, gap, skipped, randomGap, protect) {
-    await storageSet({
-      "dfcode.meta": {
-        gapSec: randomGap ? 0 : gap,
-        randomGap: !!randomGap,
-        protect: !!protect,
-        startedAt: new Date().toISOString(),
-      },
-    });
-    badge(String(queue.length), "#06784f");
     var done = 0;
-    var batchErrors = 0;
     var streak = 0;
+    var httpStreak = 0;
     var endPhase = "done";
     var endNote = "Đã nhập xong " + queue.length + " code.";
-    var batchCap = protect ? 30 : queue.length;
+    var batchCap = protect ? 30 : Math.min(queue.length, 100);
     try {
+      await storageSet({
+        "dfcode.meta": {
+          gapSec: randomGap ? 0 : gap,
+          randomGap: !!randomGap,
+          protect: !!protect,
+          startedAt: new Date().toISOString(),
+        },
+      });
+      badge(String(queue.length), "#06784f");
       for (var i = 0; i < queue.length; i++) {
         if (stopFlag) {
           endPhase = "stopped";
           endNote = "Đã dừng. Còn " + (queue.length - done) + " code chưa nhập.";
           break;
         }
-        if (protect && done >= batchCap) {
+        if (done >= batchCap) {
           endPhase = "stopped";
-          endNote = "Đã dừng sau 30 code để tránh nhập dồn. Bấm Bắt đầu để nhập tiếp phần còn lại.";
+          endNote = protect
+            ? "Đã dừng sau 30 code để tránh nhập dồn. Cần nghỉ trước khi bấm Bắt đầu lại."
+            : "Đã dừng sau 100 code. Bấm Bắt đầu để nhập tiếp phần còn lại.";
+          break;
+        }
+        var storedAttempts = await storageGet(["dfcode.attempts"]);
+        var attempts = Array.isArray(storedAttempts["dfcode.attempts"]) ? storedAttempts["dfcode.attempts"].slice() : [];
+        var quota = DFParse.quotaDecision(attempts, protect);
+        if (!quota.ok) {
+          endPhase = "stopped";
+          endNote = quota.scope === "day"
+            ? "Đã đủ số code trong 24 giờ. Có thể chạy lại lúc " + DFParse.formatClock((quota.until - Date.now()) / 1000) + "."
+            : "Đã đủ số code trong 60 phút. Có thể chạy lại lúc " + DFParse.formatClock((quota.until - Date.now()) / 1000) + ".";
           break;
         }
         var code = queue[i];
@@ -215,11 +290,36 @@
           }),
         );
         badge(String(queue.length - i), "#06784f");
+        attempts.push(Date.now());
+        var fresh = [];
+        for (var a = 0; a < attempts.length; a++) {
+          if (Date.now() - attempts[a] < 86400000) fresh.push(attempts[a]);
+        }
+        if (fresh.length > 500) fresh = fresh.slice(fresh.length - 500);
+        await storageSet({ "dfcode.attempts": fresh });
         var result = await callPage("redeem", { code: code }, 20000);
         var entry = toEntry(code, result);
         if (entry) await appendLog(entry);
         done++;
         var said = (entry && entry.detail) || (result && result.text) || "";
+        var http = result && result.raw && result.raw.httpStatus;
+        if (http === 403 || http === 429) {
+          endPhase = "stopped";
+          endNote = "Đã dừng vì trang trả mã " + http + ". Kiểm tra thủ công trước khi nhập tiếp.";
+          break;
+        }
+        if (http >= 500 && http < 600) httpStreak++;
+        else httpStreak = 0;
+        if (httpStreak >= 2) {
+          endPhase = "stopped";
+          endNote = "Đã dừng sau 2 lỗi máy chủ liên tiếp.";
+          break;
+        }
+        if (entry && entry.status === "unknown") {
+          endPhase = "stopped";
+          endNote = "Đã dừng vì chưa xác định được kết quả của " + code + ". Kiểm tra thủ công. Code này không bị tính là lỗi.";
+          break;
+        }
         if (DFParse.isAccountRisk(said)) {
           endPhase = "stopped";
           endNote = "Đã dừng để bảo vệ tài khoản. Trang báo: " + String(said).slice(0, 180);
@@ -231,17 +331,24 @@
           break;
         }
         if (entry && entry.status === "error") {
-          batchErrors++;
           streak++;
-          if (protect && streak >= 5) {
-            endPhase = "stopped";
-            endNote = "Đã dừng sau 5 lỗi liên tiếp để tránh bị tính là nhập tự động.";
-            break;
+          if (protect && streak >= 5 && i < queue.length - 1 && done < batchCap) {
+            streak = 0;
+            var continued = await waitResume(
+              resumePause(),
+              Object.assign({}, base, { index: done, current: "" }),
+            );
+            if (!continued) {
+              endPhase = "stopped";
+              endNote = "Đã dừng trong lúc nghỉ sau 5 lỗi. Còn " + (queue.length - done) + " code chưa nhập.";
+              break;
+            }
+            continue;
           }
         } else {
           streak = 0;
         }
-        if (i < queue.length - 1 && !(protect && done >= batchCap)) {
+        if (i < queue.length - 1 && done < batchCap) {
           var pace = DFParse.protectPace(gap, randomGap, protect);
           var nextGap = pace.min + Math.floor(Math.random() * (pace.max - pace.min + 1));
           var continued = await waitGap(
@@ -255,17 +362,22 @@
           }
         }
       }
-      await setRun({
-        phase: endPhase,
-        index: done,
-        total: queue.length,
-        current: "",
-        waitLeft: 0,
-        skipped: skipped,
-        note: endNote,
-      });
-      badge("");
+    } catch (e) {
+      endPhase = "stopped";
+      endNote = "Đã dừng vì lỗi nội bộ. Phiên không còn bị kẹt.";
     } finally {
+      try {
+        await setRun({
+          phase: endPhase,
+          index: done,
+          total: queue.length,
+          current: "",
+          waitLeft: 0,
+          skipped: skipped,
+          note: endNote,
+        });
+      } catch (e2) {}
+      badge("");
       running = false;
       starting = false;
       stopFlag = false;
@@ -276,7 +388,7 @@
     if (running || starting) return { ok: false, reason: "Đang chạy rồi." };
     starting = true;
     try {
-      if (!/cdkgarena\.html/i.test(location.pathname)) {
+      if (!/^\/(?:[^/]+\/)?cdkgarena\.html$/i.test(location.pathname)) {
         return { ok: false, reason: "Không phải trang đổi code." };
       }
       var source = Array.isArray(msg.codes) ? msg.codes.slice(0, 1000) : [];
@@ -308,8 +420,33 @@
           reason: "Các code này đã có trong log (đã nhập hoặc lỗi). Bỏ chọn bộ lọc log nếu muốn nhập lại.",
         };
       }
-      var pong = await callPage("ping", {}, 800);
-      if (!pong || pong.source !== "pong") {
+      var prior = await storageGet(["dfcode.run", "dfcode.attempts"]);
+      var active = prior["dfcode.run"];
+      if (active && (active.phase === "running" || active.phase === "waiting") && Date.now() - (active.updatedAt || 0) < 90000) {
+        return { ok: false, reason: "Đang có phiên chạy ở tab hoặc cửa sổ khác." };
+      }
+      var attempts = Array.isArray(prior["dfcode.attempts"]) ? prior["dfcode.attempts"] : [];
+      var lastAttempt = 0;
+      for (var t = 0; t < attempts.length; t++) lastAttempt = Math.max(lastAttempt, Number(attempts[t]) || 0);
+      var cooldown = protect ? 60000 : 20000;
+      if (lastAttempt && Date.now() - lastAttempt < cooldown) {
+        var until = lastAttempt + cooldown;
+        var wait = Math.ceil((until - Date.now()) / 1000);
+        await storageSet({ "dfcode.restUntil": until });
+        return { ok: false, reason: "Cần nghỉ " + wait + " giây trước khi bấm Bắt đầu lại.", waitSec: wait, restUntil: until };
+      }
+      var quota = DFParse.quotaDecision(attempts, protect);
+      if (!quota.ok) {
+        return {
+          ok: false,
+          reason: quota.scope === "day"
+            ? "Đã đủ số code trong 24 giờ. Có thể chạy lại lúc " + DFParse.formatClock((quota.until - Date.now()) / 1000) + "."
+            : "Đã đủ số code trong 60 phút. Có thể chạy lại lúc " + DFParse.formatClock((quota.until - Date.now()) / 1000) + ".",
+        };
+      }
+      if (queue.length > (protect ? 30 : 100)) queue = queue.slice(0, protect ? 30 : 100);
+      var ready = await ensurePort();
+      if (!ready) {
         return { ok: false, reason: "Trang chưa sẵn sàng. Tải lại trang đổi code (F5) rồi chạy lại." };
       }
       if (!isLoggedIn()) {
@@ -317,7 +454,19 @@
       }
       running = true;
       stopFlag = false;
-      loop(queue, gap, skipped, randomGap, protect);
+      await setRun({
+        phase: "running",
+        index: 0,
+        total: queue.length,
+        current: "",
+        waitLeft: 0,
+        skipped: skipped,
+        note: "Đang bắt đầu.",
+      });
+      loop(queue, gap, skipped, randomGap, protect).catch(function () {
+        running = false;
+        starting = false;
+      });
       return { ok: true, total: queue.length, skipped: skipped, gapSec: gap, randomGap: randomGap, protect: protect };
     } finally {
       if (!running) starting = false;

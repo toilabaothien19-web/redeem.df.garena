@@ -145,6 +145,7 @@
     value = value.replace(/\bBearer\s+\S+/gi, "[đã ẩn]");
     value = value.replace(/\b(?:cookie|set-cookie|authorization|access_token|refresh_token|id_token|sessionid|passwd|password|openid|sso_key|token)\s*[:=]\s*\S+/gi, "[đã ẩn]");
     value = value.replace(/\b[a-f0-9]{32,}\b/gi, "[đã ẩn]");
+    value = value.replace(/\d{8,}/g, "[đã ẩn số]");
     return squash(value).slice(0, cap);
   }
 
@@ -160,6 +161,8 @@
     if (!raw || typeof raw !== "object") return out;
     var serverCode = firstNumber(raw.code, raw.ret, raw.iRet, raw.errCode, raw.errcode);
     if (serverCode !== null && Math.abs(serverCode) < 100000000) out.code = serverCode;
+    var http = firstNumber(raw.httpStatus);
+    if (http !== null && http >= 100 && http < 600) out.httpStatus = http;
     var nested = raw.data && typeof raw.data === "object" ? raw.data : {};
     out.msg = squash(
       raw.msg || raw.message || raw.sMsg || raw.errMsg || raw.desc || raw.sMessage || raw.error || raw.reason
@@ -169,30 +172,51 @@
     return out;
   }
 
+  function looksFailed(text) {
+    return /không thành công|khong thanh cong|thất bại|that bai|失败|invalid|không hợp lệ|khong hop le|\berror\b|\blỗi\b|\bloi\b/i.test(text || "");
+  }
+
+  function looksOk(text) {
+    return /đổi thành công|thành công|redeemed successfully|redemption successful|(?:^|[^a-z])success(?:ful|fully)?(?:[^a-z]|$)|兑换成功/i.test(text || "");
+  }
+
   function describeApi(raw) {
     var picked = pickApiFields(raw);
     if (!raw || typeof raw !== "object") {
-      return { ok: false, serverCode: null, detail: "" };
+      return { ok: false, status: "unknown", serverCode: null, detail: "" };
     }
     var serverCode = picked.code;
     var msg = usableText(picked.msg);
     var screen = usableText(picked.screen);
-    var ok = serverCode === 0;
     var parts = [];
     if (screen) parts.push(screen);
-    if (msg && msg !== screen && (!screen || screen.indexOf(msg) === -1)) {
-      if (!(/^success$/i.test(msg) || /^ok$/i.test(msg)) || !screen) parts.push(msg);
-    }
+    var ack = /^(?:ok|success|successful|successfully)$/i.test(msg);
+    if (msg && !ack && msg !== screen && (!screen || screen.indexOf(msg) === -1)) parts.push(msg);
     var exact = parts.join(" | ");
+    if (serverCode !== null && serverCode !== 0 && exact.indexOf(String(serverCode)) === -1) {
+      exact = exact ? exact + " | " + serverCode : String(serverCode);
+    }
     if (!exact && serverCode !== null) exact = String(serverCode);
-    return { ok: ok, serverCode: serverCode, detail: exact };
+    var failed = looksFailed(exact);
+    var success = looksOk(exact);
+    var status = "unknown";
+    if (serverCode === 0 && failed) status = "unknown";
+    else if (serverCode === 0) status = "ok";
+    else if (serverCode !== null && success) status = "unknown";
+    else if (serverCode !== null) status = "error";
+    else if (success && !failed) status = "ok";
+    else if (failed) status = "error";
+    return { ok: status === "ok", status: status, serverCode: serverCode, detail: exact, httpStatus: picked.httpStatus || 0 };
   }
 
   function describeDialog(text) {
     var detail = usableText(text);
-    var failed = /không thành công|khong thanh cong|thất bại|that bai|失败|invalid|không hợp lệ|khong hop le|error|lỗi|loi/i.test(detail);
-    var ok = !failed && /đổi thành công|thành công|success|兑换成功/i.test(detail);
-    return { ok: ok, serverCode: null, detail: detail };
+    var failed = looksFailed(detail);
+    var success = looksOk(detail);
+    var status = "error";
+    if (!detail || (failed && success)) status = "unknown";
+    else if (success && !failed) status = "ok";
+    return { ok: status === "ok", status: status, serverCode: null, detail: detail };
   }
 
   function formatTime(iso) {
@@ -241,7 +265,7 @@
     if (!list.length) lines.push("(chưa có lượt nhập nào)");
     for (var n = 0; n < list.length; n++) {
       var entry = list[n];
-      var tag = entry.status === "ok" ? "OK" : entry.status === "error" ? "LỖI" : String(entry.status || "").toUpperCase();
+      var tag = entry.status === "ok" ? "OK" : entry.status === "unknown" ? "CHƯA" : entry.status === "error" ? "LỖI" : String(entry.status || "").toUpperCase();
       lines.push("[" + tag + "] " + formatTime(entry.at) + "  " + entry.code + "  —  " + sanitizeText(entry.detail, 500));
     }
     lines.push("");
@@ -274,12 +298,13 @@
       if (/^(DF Code|Xuất lúc|Xuat luc|Trang|Tài khoản|Tai khoan|Khoảng cách|Khoang cach)\b/i.test(line)) continue;
       if (line === "(không có)" || line === "(khong co)" || line === "(chưa có lượt nhập nào)") continue;
       if (section === "detail") {
-        var match = line.match(/^\[(OK|LỖI|LOI|ERROR)\]\s+(.+?)\s{2,}([A-Za-z0-9_-]{4,80})\s+[—-]\s+(.+)$/i);
+        var match = line.match(/^\[(OK|LỖI|LOI|ERROR|CHƯA|CHUA)\]\s+(.+?)\s{2,}([A-Za-z0-9_-]{4,80})\s+[—-]\s+(.+)$/i);
         if (!match) continue;
         var tag = match[1].toUpperCase();
+        var status = tag === "OK" ? "ok" : tag === "CHƯA" || tag === "CHUA" ? "unknown" : "error";
         fromDetail.push({
           code: match[3],
-          status: tag === "OK" ? "ok" : "error",
+          status: status,
           detail: squash(match[4]),
           at: "",
         });
@@ -310,7 +335,7 @@
         id: "",
         at: entry.at || "",
         code: entry.code,
-        status: entry.status === "ok" ? "ok" : "error",
+        status: entry.status === "ok" || entry.status === "unknown" ? entry.status : "error",
         detail: squash(entry.detail),
         serverCode: null,
       });
@@ -321,19 +346,36 @@
     return out;
   }
 
+  function quotaDecision(attempts, protect, now) {
+    var list = Array.isArray(attempts) ? attempts : [];
+    var t = typeof now === "number" ? now : Date.now();
+    var hourCap = protect ? 30 : 100;
+    var dayCap = protect ? 60 : 200;
+    var hourHits = [];
+    var dayHits = [];
+    for (var i = 0; i < list.length; i++) {
+      var at = Number(list[i]) || 0;
+      if (t - at < 3600000) hourHits.push(at);
+      if (t - at < 86400000) dayHits.push(at);
+    }
+    if (hourHits.length >= hourCap) return { ok: false, until: Math.min.apply(null, hourHits) + 3600000, scope: "hour" };
+    if (dayHits.length >= dayCap) return { ok: false, until: Math.min.apply(null, dayHits) + 86400000, scope: "day" };
+    return { ok: true, until: 0, scope: "" };
+  }
+
   function mergeLogs(current, incoming) {
     var map = Object.create(null);
     var order = [];
     function put(entry) {
       if (!entry || !isCodeToken(entry.code)) return;
-      var status = entry.status === "ok" ? "ok" : "error";
+      var status = entry.status === "ok" || entry.status === "unknown" ? entry.status : "error";
       if (!map[entry.code]) order.push(entry.code);
       map[entry.code] = {
         id: entry.id || "",
         at: entry.at || "",
         code: entry.code,
         status: status,
-        detail: squash(entry.detail) || (status === "ok" ? "Đã có trong log dùng được." : "Lỗi (từ log)"),
+        detail: squash(entry.detail) || (status === "ok" ? "Đã có trong log dùng được." : status === "unknown" ? "Chưa xác định." : "Lỗi (từ log)"),
         serverCode: entry.serverCode == null ? null : entry.serverCode,
       };
     }
@@ -363,6 +405,7 @@
     formatLog: formatLog,
     parseLog: parseLog,
     mergeLogs: mergeLogs,
+    quotaDecision: quotaDecision,
     formatTime: formatTime,
     isCodeToken: isCodeToken,
   };

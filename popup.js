@@ -24,8 +24,9 @@
   var pollTimer = null;
   var logCache = [];
   var metaCache = {};
-  var injectedFor = 0;
   var runActive = false;
+  var restUntil = 0;
+  var restTimer = null;
   var extension = typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id;
 
   function setStatus(text, mode) {
@@ -125,6 +126,12 @@
     done();
   }
 
+  function bindCopy(btn, entry) {
+    btn.addEventListener("click", function () {
+      copyText(entry.code + "\t" + (entry.detail || ""));
+    });
+  }
+
   function renderLog(entries) {
     logCache = Array.isArray(entries) ? entries : [];
     var previous = logEl.getAttribute("data-top") || "";
@@ -133,7 +140,7 @@
     for (var i = 0; i < view.length; i++) {
       var entry = view[i];
       var li = document.createElement("li");
-      li.className = entry.status === "ok" ? "ok" : "bad";
+      li.className = entry.status === "ok" ? "ok" : entry.status === "unknown" ? "wait" : "bad";
       if (i === 0 && previous && entry.id && entry.id !== previous) li.classList.add("fresh");
       var code = document.createElement("b");
       code.textContent = entry.code || "";
@@ -147,9 +154,7 @@
         copy.type = "button";
         copy.className = "copy";
         copy.textContent = "Chép mã lỗi";
-        copy.addEventListener("click", function () {
-          copyText(entry.code + "\t" + (entry.detail || ""));
-        });
+        bindCopy(copy, entry);
         li.appendChild(copy);
       }
       logEl.appendChild(li);
@@ -160,14 +165,21 @@
     }
     var has = logCache.length > 0;
     exportBtn.disabled = !has;
-    clearBtn.disabled = !has;
+    clearBtn.disabled = runActive || !has;
+    $("importLog").disabled = runActive;
     paintStats();
   }
 
   function renderRun(run) {
     var active = !!(run && (run.phase === "running" || run.phase === "waiting"));
     runActive = active;
+    clearBtn.disabled = active || !logCache.length;
+    $("importLog").disabled = active;
     if (!run || !run.phase || run.phase === "idle") {
+      if (restLeft() > 0) {
+        startBtn.disabled = true;
+        return;
+      }
       progressEl.textContent = "Chưa chạy.";
       renderCount();
       return;
@@ -222,15 +234,10 @@
   function isRedeemUrl(url) {
     try {
       var parsed = new URL(url);
-      return parsed.hostname === "redeem.df.garena.sg" && /cdkgarena\.html/i.test(parsed.pathname);
+      return parsed.hostname === "redeem.df.garena.sg" && /^\/(?:[^/]+\/)?cdkgarena\.html$/i.test(parsed.pathname);
     } catch (e) {
       return false;
     }
-  }
-
-  async function inject(id) {
-    await chrome.scripting.executeScript({ target: { tabId: id }, files: ["inject.js"], world: "MAIN" });
-    await chrome.scripting.executeScript({ target: { tabId: id }, files: ["parser.js", "runner.js"] });
   }
 
   async function refreshTab() {
@@ -245,15 +252,6 @@
     }
     tabId = tab.id;
     var response = await send(tab.id, { kind: "probe" });
-    if (!response && injectedFor !== tab.id) {
-      injectedFor = tab.id;
-      try {
-        await inject(tab.id);
-        response = await send(tab.id, { kind: "probe" });
-      } catch (e) {
-        response = null;
-      }
-    }
     if (!response || !response.ok) {
       setStatus("Hãy tải lại trang đổi code (F5), rồi mở lại tiện ích.", "bad");
       startBtn.disabled = true;
@@ -272,18 +270,49 @@
       return;
     }
     setStatus("Sẵn sàng trên trang đổi code.", "ready");
-    startBtn.disabled = false;
+    startBtn.disabled = restLeft() > 0;
+  }
+
+  function restLeft() {
+    return Math.max(0, Math.ceil((restUntil - Date.now()) / 1000));
+  }
+
+  function paintRest() {
+    var left = restLeft();
+    if (left <= 0) {
+      restUntil = 0;
+      if (restTimer) {
+        clearInterval(restTimer);
+        restTimer = null;
+      }
+      progressEl.textContent = "Đã hết thời gian nghỉ. Có thể bấm Bắt đầu.";
+      if (!runActive) startBtn.disabled = false;
+      if (extension) chrome.storage.local.set({ "dfcode.restUntil": 0 });
+      return;
+    }
+    progressEl.textContent = "Cần nghỉ " + left + " giây trước khi bấm Bắt đầu lại.";
+    startBtn.disabled = true;
+  }
+
+  function showRest(until) {
+    var next = Number(until) || 0;
+    if (next <= Date.now()) return;
+    restUntil = next;
+    paintRest();
+    if (!restTimer) restTimer = setInterval(paintRest, 250);
   }
 
   function persistDraft() {
     if (!extension) return;
-    chrome.storage.local.set({
-      "dfcode.draft": codesEl.value,
-      "dfcode.gap": gapEl.value,
-      "dfcode.random": randomEl.checked,
-      "dfcode.skipLogged": skipEl.checked,
-      "dfcode.protect": protectEl.checked,
-    });
+    try {
+      chrome.storage.local.set({
+        "dfcode.draft": codesEl.value,
+        "dfcode.gap": gapEl.value,
+        "dfcode.random": randomEl.checked,
+        "dfcode.skipLogged": skipEl.checked,
+        "dfcode.protect": protectEl.checked,
+      }, function () { void chrome.runtime.lastError; });
+    } catch (e) {}
   }
 
   codesEl.addEventListener("input", function () {
@@ -317,6 +346,7 @@
       progressEl.textContent = "Không nạp được code demo.";
       return;
     }
+    if (!window.confirm("Danh sách demo có thể đã hết hạn. Mỗi code sai là một lần thử trên tài khoản của bạn. Nạp danh sách này?")) return;
     if (codesEl.value.trim() && !window.confirm("Thay danh sách đang có bằng Demo Code?")) return;
     codesEl.value = text;
     renderCount();
@@ -352,6 +382,11 @@
 
   $("importLog").addEventListener("click", function () { $("logFile").click(); });
   $("logFile").addEventListener("change", function () {
+    if (runActive) {
+      progressEl.textContent = "Dừng chạy trước khi nạp log.";
+      $("logFile").value = "";
+      return;
+    }
     var file = $("logFile").files && $("logFile").files[0];
     $("logFile").value = "";
     if (!file) return;
@@ -385,6 +420,9 @@
     var random = randomEl.checked;
     var gap = random ? 0 : DFParse.clampGap(gapEl.value);
     if (!random) gapEl.value = String(gap);
+    if (!protectEl.checked && !window.confirm("Đã tắt bảo vệ tài khoản. Lần này tối đa 100 code, vẫn là nhập tự động trên tài khoản của bạn. Tiếp tục?")) {
+      return;
+    }
     startBtn.disabled = true;
     progressEl.textContent = "Đang bắt đầu…";
     var payload = {
@@ -396,16 +434,9 @@
       protect: protectEl.checked,
     };
     var response = await send(tabId, payload);
-    if (!response) {
-      try {
-        await inject(tabId);
-        response = await send(tabId, payload);
-      } catch (e) {
-        response = null;
-      }
-    }
     if (!response || !response.ok) {
-      progressEl.textContent = (response && response.reason) || "Không gửi được lệnh. Tải lại trang đổi code.";
+      if (response && response.restUntil) showRest(response.restUntil);
+      else progressEl.textContent = (response && response.reason) || "Không gửi được lệnh. Tải lại trang đổi code.";
       refreshTab();
       return;
     }
@@ -434,6 +465,10 @@
   });
 
   clearBtn.addEventListener("click", function () {
+    if (runActive) {
+      progressEl.textContent = "Dừng chạy trước khi xóa log.";
+      return;
+    }
     if (!logCache.length) return;
     if (!window.confirm("Xóa toàn bộ log trên tiện ích này?")) return;
     renderLog([]);
@@ -470,6 +505,7 @@
       metaCache = meta;
     }
     if (data["dfcode.run"]) renderRun(data["dfcode.run"]);
+    if (typeof data["dfcode.restUntil"] === "number") showRest(data["dfcode.restUntil"]);
     if (!runActive) renderCount();
   }
 
@@ -482,7 +518,7 @@
   }
 
   chrome.storage.local.get(
-    ["dfcode.draft", "dfcode.gap", "dfcode.random", "dfcode.skipLogged", "dfcode.skipOk", "dfcode.protect", "dfcode.log", "dfcode.meta", "dfcode.run"],
+    ["dfcode.draft", "dfcode.gap", "dfcode.random", "dfcode.skipLogged", "dfcode.skipOk", "dfcode.protect", "dfcode.log", "dfcode.meta", "dfcode.run", "dfcode.restUntil"],
     function (data) {
       applyStored(data || {});
       if (!data || !Array.isArray(data["dfcode.log"])) renderLog([]);
@@ -503,5 +539,6 @@
   pollTimer = setInterval(refreshTab, 2000);
   window.addEventListener("unload", function () {
     clearInterval(pollTimer);
+    if (restTimer) clearInterval(restTimer);
   });
 })();

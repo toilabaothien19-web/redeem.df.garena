@@ -1,10 +1,8 @@
 /* Chạy cùng trang đổi quà: điền ô code, bấm Đổi, đọc phản hồi thật của trang. */
 (function () {
-  if (window.__dfCodeGarena) return;
-  window.__dfCodeGarena = true;
-
   var CHANNEL = "dfcode-garena-v1";
   var pending = null;
+  var port = null;
 
   function sleep(ms) {
     return new Promise(function (resolve) {
@@ -44,6 +42,13 @@
     try { return decodeURIComponent(found[1]); } catch (e) { return found[1]; }
   }
 
+  function pushMsg(into, value) {
+    if (typeof value !== "string") return;
+    var text = value.replace(/\s+/g, " ").trim();
+    if (!text || into.indexOf(text) !== -1) return;
+    into.push(text);
+  }
+
   function pickRaw(parsed) {
     var out = {};
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return out;
@@ -55,10 +60,27 @@
     if (typeof code === "number" && isFinite(code)) out.code = code;
     else if (typeof code === "string" && /^-?\d{1,8}$/.test(code)) out.code = Number(code);
     var nested = parsed.data && typeof parsed.data === "object" && !Array.isArray(parsed.data) ? parsed.data : {};
-    var msg = parsed.msg || parsed.message || parsed.sMsg || parsed.errMsg || parsed.desc || parsed.sMessage || nested.msg || nested.message || nested.sMsg || "";
-    if (typeof msg !== "string") msg = "";
-    msg = msg.replace(/\s+/g, " ").trim().slice(0, 500);
-    if (msg) out.msg = msg;
+    var parts = [];
+    [parsed, nested].forEach(function (obj) {
+      pushMsg(parts, obj.msg);
+      pushMsg(parts, obj.message);
+      pushMsg(parts, obj.sMsg);
+      pushMsg(parts, obj.errMsg);
+      pushMsg(parts, obj.errmsg);
+      pushMsg(parts, obj.desc);
+      pushMsg(parts, obj.sMessage);
+      pushMsg(parts, obj.error);
+      pushMsg(parts, obj.reason);
+      pushMsg(parts, obj.error_hint);
+      pushMsg(parts, obj.errorHint);
+      pushMsg(parts, obj.hint);
+      pushMsg(parts, obj.sHint);
+      pushMsg(parts, obj.tip);
+      pushMsg(parts, obj.showMsg);
+      pushMsg(parts, obj.show_msg);
+    });
+    if (!parts.length && typeof parsed.data === "string") pushMsg(parts, parsed.data);
+    if (parts.length) out.msg = parts.join(" | ").slice(0, 500);
     return out;
   }
 
@@ -78,16 +100,31 @@
     return { msg: raw.replace(/\s+/g, " ").trim().slice(0, 240) };
   }
 
-  function takeResponse(url, body, text, at) {
+  function takeResponse(url, body, text, at, httpStatus) {
     if (!pending || !pending.armed || pending.raw) return;
     if (!isRedeemUrl(url)) return;
     if (at && at < pending.since) return;
-    if (bodyVerdict(body, pending.code) === "foreign") return;
+    var verdict = bodyVerdict(body, pending.code);
+    if (verdict === "foreign") return;
     var named = urlCode(url);
     if (named && named !== pending.code) return;
+    if (verdict === "unknown" && (pending.seen || 0) >= 2) {
+      pending.ambiguous = true;
+      return;
+    }
     var parsed = parsePayload(text);
-    if (!parsed || (parsed.code == null && !parsed.msg)) return;
+    if (!parsed || (parsed.code == null && !parsed.msg)) {
+      if ((pending.seen || 0) >= 2) pending.ambiguous = true;
+      return;
+    }
+    if (typeof httpStatus === "number") parsed.httpStatus = httpStatus;
     pending.raw = parsed;
+  }
+
+  function noteRedeem(url, at) {
+    if (!pending || !pending.armed || !isRedeemUrl(url)) return;
+    if (at && at < pending.since) return;
+    pending.seen = (pending.seen || 0) + 1;
   }
 
   var originalOpen = XMLHttpRequest.prototype.open;
@@ -105,10 +142,11 @@
       var sentAt = xhr.__dfAt || Date.now();
       xhr.addEventListener("load", function () {
         try {
-          takeResponse(xhr.__dfUrl, body, xhr.responseText, sentAt);
+          takeResponse(xhr.__dfUrl, body, xhr.responseText, sentAt, xhr.status);
         } catch (e) {}
       });
     }
+    if (xhr.__dfUrl) noteRedeem(xhr.__dfUrl, sentAt);
     return originalSend.apply(this, arguments);
   };
 
@@ -119,11 +157,13 @@
       var startedAt = Date.now();
       var body = init && init.body;
       var pendingResponse = originalFetch.apply(this, arguments);
-      if (pending && pending.armed && startedAt >= pending.since && isRedeemUrl(url) && bodyVerdict(body, pending.code) !== "foreign") {
+      if (isRedeemUrl(url)) noteRedeem(url, startedAt);
+      if (pending && pending.armed && startedAt >= pending.since && isRedeemUrl(url)) {
         pendingResponse.then(function (response) {
           try {
+            var status = response.status;
             response.clone().text().then(function (text) {
-              takeResponse(url, body, text, startedAt);
+              takeResponse(url, body, text, startedAt, status);
             }).catch(function () {});
           } catch (e) {}
         }).catch(function () {});
@@ -141,25 +181,51 @@
   function snapshotDialog() {
     var dia = document.querySelector("#diaTips");
     var tip = document.querySelector("#superTips");
-    var diaText = dia ? (dia.innerText || "").replace(/\s+/g, " ").trim() : "";
-    var tipText = tip ? (tip.innerText || "").replace(/\s+/g, " ").trim() : "";
+    var diaNode = dia ? dia.querySelector("p") || dia : null;
+    var diaText = diaNode ? (diaNode.innerText || diaNode.textContent || "").replace(/\s+/g, " ").trim() : "";
+    var tipText = tip ? (tip.innerText || tip.textContent || "").replace(/\s+/g, " ").trim() : "";
     var diaOpen = isShown(dia);
     var tipShown = isShown(tip) && tipText.length > 0;
+    var parts = [];
+    if (diaOpen && diaText) parts.push(diaText);
+    if (tipShown && tipText && parts.indexOf(tipText) === -1) parts.push(tipText);
     return {
       diaText: diaText,
       tipText: tipText,
       diaOpen: diaOpen,
       tipShown: tipShown,
-      text: ((diaOpen && diaText) || (tipShown && tipText) || "").slice(0, 500),
+      text: parts.join(" | ").slice(0, 500),
     };
   }
 
-  function dialogChanged(before, now) {
-    if (!now.text) return false;
-    if (now.diaOpen && !before.diaOpen) return true;
-    if (now.tipShown && now.tipText && now.tipText !== before.tipText) return true;
-    if (now.diaOpen && now.diaText && now.diaText !== before.diaText) return true;
-    return false;
+  function freshScreen(before) {
+    var now = snapshotDialog();
+    var changed = [];
+    var same = [];
+    function take(text, was, opened) {
+      if (!text) return;
+      if (text !== was) {
+        if (changed.indexOf(text) === -1) changed.push(text);
+      } else if (opened && same.indexOf(text) === -1 && changed.indexOf(text) === -1) {
+        same.push(text);
+      }
+    }
+    if (now.diaOpen) take(now.diaText, before.diaText, !before.diaOpen);
+    if (now.tipShown) take(now.tipText, before.tipText, !before.tipShown);
+    return {
+      changed: changed.join(" | ").slice(0, 500),
+      same: same.join(" | ").slice(0, 500),
+    };
+  }
+
+  function finishRedeem(raw, screen) {
+    pending = null;
+    closeDialog();
+    if (raw) {
+      if (screen) raw = Object.assign({}, raw, { screen: screen });
+      return { source: "api", raw: raw };
+    }
+    return { source: "dialog", text: screen || "" };
   }
 
   function closeDialog() {
@@ -200,44 +266,31 @@
       return { source: "ui", text: "Trang đang yêu cầu xác minh. Dừng để không tiếp tục tự nhập." };
     }
     var before = snapshotDialog();
-    pending = { code: code, raw: null, armed: false, since: 0 };
+    pending = { code: code, raw: null, armed: false, since: 0, seen: 0, ambiguous: false };
     setInput(ui.input, code);
     await sleep(400 + Math.floor(Math.random() * 500));
     pending.since = Date.now();
     pending.armed = true;
     ui.button.click();
     var started = Date.now();
+    var sawAt = 0;
     while (Date.now() - started < 15000) {
-      if (pending && pending.raw) {
-        var raw = pending.raw;
-        var shown = snapshotDialog();
-        if (shown.text) raw = Object.assign({}, raw, { screen: shown.text });
+      if (pending && pending.ambiguous && !pending.raw) {
         pending = null;
-        closeDialog();
-        return { source: "api", raw: raw };
+        return { source: "unknown" };
       }
-      var now = snapshotDialog();
-      if (dialogChanged(before, now)) {
-        var extraStarted = Date.now();
-        while (Date.now() - extraStarted < 800) {
-          if (pending && pending.raw) {
-            var late = pending.raw;
-            var lateShown = snapshotDialog();
-            if (lateShown.text) late = Object.assign({}, late, { screen: lateShown.text });
-            pending = null;
-            closeDialog();
-            return { source: "api", raw: late };
-          }
-          await sleep(100);
-        }
-        pending = null;
-        closeDialog();
-        return { source: "dialog", text: now.text };
-      }
-      await sleep(120);
+      var raw = pending && pending.raw;
+      var view = freshScreen(before);
+      var screen = view.changed;
+      if ((raw || screen || view.same) && !sawAt) sawAt = Date.now();
+      var waited = sawAt ? Date.now() - sawAt : 0;
+      if (raw && screen) return finishRedeem(raw, screen);
+      if (screen && waited >= 200) return finishRedeem(raw, screen);
+      if ((raw || view.same) && waited >= 400) return finishRedeem(raw, screen || view.same);
+      await sleep(40);
     }
     pending = null;
-    return { source: "timeout" };
+    return { source: "unknown" };
   }
 
   var busy = false;
@@ -250,11 +303,13 @@
       if (typeof raw.code === "number" && isFinite(raw.code)) clean.code = raw.code;
       if (typeof raw.msg === "string") clean.msg = raw.msg.slice(0, 500);
       if (typeof raw.screen === "string") clean.screen = raw.screen.slice(0, 500);
+      if (typeof raw.httpStatus === "number") clean.httpStatus = raw.httpStatus;
       return { source: "api", raw: clean };
     }
     if (result.source === "dialog" || result.source === "ui") {
       return { source: result.source, text: String(result.text || "").slice(0, 500) };
     }
+    if (result.source === "unknown") return { source: "unknown" };
     return { source: "timeout" };
   }
 
@@ -262,37 +317,39 @@
     return /^[A-Za-z0-9_-]{4,80}$/.test(code);
   }
 
-  window.addEventListener("message", function (event) {
-    if (event.source !== window || event.origin !== window.location.origin) return;
+  function reply(message) {
+    if (port) port.postMessage(message);
+  }
+
+  function handleCommand(event) {
     var data = event.data;
-    if (!data || data.channel !== CHANNEL || !data.id) return;
-    if (data.kind === "ping") {
-      window.postMessage({ channel: CHANNEL, kind: "pong", id: data.id }, window.location.origin);
-      return;
-    }
-    if (data.kind !== "redeem" || busy) return;
+    if (!data || data.kind !== "redeem" || busy) return;
     var code = String(data.code || "");
     if (!isSafeCode(code)) {
-      window.postMessage(
-        { channel: CHANNEL, kind: "result", id: data.id, code: code, result: publicResult({ source: "ui", text: "Code không đúng định dạng." }) },
-        window.location.origin,
-      );
+      reply({ kind: "result", id: data.id, code: code, result: publicResult({ source: "ui", text: "Code không đúng định dạng." }) });
       return;
     }
     busy = true;
     redeemOne(code).then(function (result) {
       busy = false;
-      window.postMessage(
-        { channel: CHANNEL, kind: "result", id: data.id, code: code, result: publicResult(result) },
-        window.location.origin,
-      );
+      reply({ kind: "result", id: data.id, code: code, result: publicResult(result) });
     }).catch(function () {
       busy = false;
       pending = null;
-      window.postMessage(
-        { channel: CHANNEL, kind: "result", id: data.id, code: code, result: { source: "timeout" } },
-        window.location.origin,
-      );
+      reply({ kind: "result", id: data.id, code: code, result: { source: "unknown" } });
     });
-  });
+  }
+
+  function onHello(event) {
+    if (port) return;
+    if (event.source !== window || !event.data || event.data.channel !== CHANNEL || event.data.kind !== "hello") return;
+    if (!event.ports || !event.ports[0]) return;
+    window.removeEventListener("message", onHello, true);
+    port = event.ports[0];
+    port.onmessage = handleCommand;
+    port.postMessage({ kind: "ready" });
+  }
+
+  window.addEventListener("message", onHello, true);
 })();
+

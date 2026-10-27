@@ -2,6 +2,10 @@
 <html lang="vi">
   <head>
     <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; form-action 'none'; object-src 'none'; base-uri 'none'"
+    />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DF Code Garena</title>
     <link rel="stylesheet" href="popup.css" />
@@ -11,7 +15,7 @@
       <img class="mark" src="icons/icon48.png" alt="" width="36" height="36" />
       <div class="titles">
         <h1>Nhập code Delta Force</h1>
-        <p class="ver">Phiên bản 1.9.3</p>
+        <p class="ver">Phiên bản 1.9.9</p>
         <p id="status">Đang kiểm tra trang…</p>
       </div>
     </header>
@@ -20,6 +24,7 @@
     <textarea
       id="codes"
       rows="7"
+      maxlength="200000"
       spellcheck="false"
       placeholder="Mỗi dòng một code. Dán trực tiếp hoặc mở file .txt. Dòng bắt đầu bằng # được bỏ qua."
     ></textarea>
@@ -59,7 +64,7 @@
 
     <label class="check" id="protectLabel">
       <input id="protect" type="checkbox" checked />
-      <span>Bảo vệ tài khoản: nghỉ ngẫu nhiên 20–30 giây, dừng sau 30 code hoặc 5 lỗi liên tiếp</span>
+      <span>Bảo vệ tài khoản: nghỉ ngẫu nhiên 20–30 giây, dừng sau 30 code. Sau 5 lỗi liên tiếp tự nghỉ 30–60 giây rồi nhập tiếp</span>
     </label>
     <p id="gapHint" class="hint">Mỗi code sau nghỉ ngẫu nhiên từ 20 đến 30 giây. Code đầu nhập ngay.</p>
     <p class="hint">Không thể cam kết tài khoản không bị khóa. Tiện ích chỉ nhập chậm hơn và dừng khi trang báo giới hạn, xác minh hoặc khóa.</p>
