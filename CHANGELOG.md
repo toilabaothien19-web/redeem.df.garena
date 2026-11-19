@@ -38,7 +38,7 @@ Thay đổi
 ## 0.5.0 beta
 
 - Mã gốc trước khi viết lại, trước đây đánh số 1.9.9. Chỉ đổi số phiên bản; mã chạy giữ nguyên.
-- Đăng dạng pre-release để đối chiếu. Các lỗi của bản này đã được sửa ở 1.0.0.
+- Không phát hành file zip; mã giữ trong lịch sử git (tag `v0.5.0`, commit `83f3cfb`) để đối chiếu. Các lỗi của bản này đã được sửa ở 1.0.0.
 
 ## Lịch sử trước 0.5.0 (số cũ)
 
