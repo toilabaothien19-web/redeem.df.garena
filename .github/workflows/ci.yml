@@ -44,12 +44,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          name="df-code-garena-${GITHUB_REF_NAME#v}.zip"
           flags=""
           title="DF Code Garena ${GITHUB_REF_NAME#v}"
           case "$GITHUB_REF_NAME" in v0.*) flags="--prerelease"; title="$title beta" ;; esac
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/*.zip dist/*.zip.sha256 --clobber
+            # Release đã được tạo trên web. File zip đã đính kèm thì đối chiếu với bản vừa đóng gói lại,
+            # không ghi đè; khác hash nghĩa là file trên Releases không phải đóng gói từ mã ở tag này.
+            if gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | grep -qx "$name"; then
+              gh release download "$GITHUB_REF_NAME" --pattern "$name" --dir dist/remote
+              if cmp -s "dist/$name" "dist/remote/$name"; then
+                echo "File $name trên Releases khớp với bản đóng gói lại từ mã nguồn."
+              else
+                echo "::error::File $name trên Releases KHÁC bản đóng gói lại từ mã ở tag này."
+                exit 1
+              fi
+            else
+              gh release upload "$GITHUB_REF_NAME" "dist/$name" "dist/$name.sha256"
+            fi
           else
-            gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*.zip.sha256 $flags \
+            gh release create "$GITHUB_REF_NAME" "dist/$name" "dist/$name.sha256" $flags \
               --title "$title" --notes-file dist/RELEASE.md
           fi
