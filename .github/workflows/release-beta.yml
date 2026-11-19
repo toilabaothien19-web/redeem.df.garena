@@ -1,0 +1,70 @@
+name: Release beta
+
+# Đẩy tag v0.<...> (vd. v0.5.0) thì đóng gói mã trong tag này thành file zip và đăng lên Releases dạng pre-release.
+on:
+  push:
+    tags: ["v0.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag phải khớp phiên bản trong manifest.json
+        run: |
+          version=$(node -p "require('./manifest.json').version")
+          test "v$version" = "$GITHUB_REF_NAME" || { echo "Tag $GITHUB_REF_NAME khác phiên bản $version"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Đối chiếu SHA256SUMS
+        run: sha256sum -c SHA256SUMS
+      - name: Đóng gói
+        run: |
+          name="df-code-garena-$VERSION-beta.zip"
+          stage=dist/stage/df-code-garena
+          for f in $(awk '{print $2}' SHA256SUMS) SHA256SUMS HUONG-DAN.txt; do
+            mkdir -p "$stage/$(dirname "$f")"
+            cp "$f" "$stage/$f"
+          done
+          find dist/stage -exec touch -h -d '2026-01-01 00:00:00' {} +
+          (cd dist/stage && find df-code-garena -type f | LC_ALL=C sort | zip -X -q -@ "../$name")
+          (cd dist && sha256sum "$name" > "$name.sha256")
+          {
+            echo "Bản beta: mã gốc trước khi viết lại, trước đây đánh số 1.9.9. Chỉ đổi số phiên bản thành $VERSION; mã chạy giữ nguyên."
+            echo
+            echo "Giữ lại để đối chiếu. Bản khuyên dùng là 1.0.0, đã sửa nhiều lỗi của bản này."
+            echo
+            echo "### Đối chiếu"
+            echo
+            echo "SHA-256 của file zip:"
+            echo
+            echo '```'
+            cat "dist/$name.sha256"
+            echo '```'
+            echo
+            echo "SHA256SUMS bên trong thư mục \`df-code-garena\`:"
+            echo
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } > dist/RELEASE.md
+      - name: Đăng pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name="df-code-garena-$VERSION-beta.zip"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # Release đã được tạo trên web: chỉ đính kèm khi còn thiếu, không ghi đè file đã có.
+            if gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | grep -qx "$name"; then
+              echo "Release $GITHUB_REF_NAME đã có $name, giữ nguyên."
+            else
+              gh release upload "$GITHUB_REF_NAME" "dist/$name" "dist/$name.sha256"
+            fi
+          else
+            gh release create "$GITHUB_REF_NAME" "dist/$name" "dist/$name.sha256" --prerelease \
+              --title "DF Code Garena $VERSION beta" --notes-file dist/RELEASE.md
+          fi

@@ -6,7 +6,7 @@
 
 Tiện ích Chrome / Edge để nhập danh sách code Delta Force trên trang đổi quà chính thức của Garena. Mã nguồn để công khai, không qua bước build: file bạn đọc trên GitHub là file được cài vào trình duyệt.
 
-Phiên bản hiện tại: **1.9.9**
+Phiên bản: **0.5.0 beta** — mã gốc trước khi viết lại, trước đây đánh số 1.9.9. Bản khuyên dùng là 1.0.0 trở lên.
 
 Trang đổi code: https://redeem.df.garena.sg/vi/cdkgarena.html
 
@@ -40,7 +40,7 @@ Tiện ích vẫn là công cụ nhập tự động trên tài khoản bạn đ
 
 Cần Chrome hoặc Edge từ phiên bản 111. Không dùng được trên Chrome điện thoại.
 
-1. Tải `df-code-garena-1.9.9.zip` từ [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) của kho này. Không cài file đính kèm trong bài viết lạ, nhóm chat, hoặc kho fork chưa đối chiếu.
+1. Tải `df-code-garena-0.5.0-beta.zip` từ [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) của kho này. Không cài file đính kèm trong bài viết lạ, nhóm chat, hoặc kho fork chưa đối chiếu.
 2. Nếu máy đã có thư mục bản cũ, xóa thư mục đó. Không giải nén đè.
 3. Giải nén. Bên trong là thư mục `df-code-garena`. Tên file zip có số phiên bản, tên thư mục thì giữ nguyên.
 4. Mở `chrome://extensions` hoặc `edge://extensions`.

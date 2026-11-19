@@ -1,4 +1,4 @@
-Phiên bản 1.9.9
+Phiên bản 0.5.0 beta (trước đây đánh số 1.9.9)
 - Sau 5 lỗi liên tiếp, tiện ích tự nghỉ 30–60 giây (kể cả số lẻ) rồi nhập tiếp.
 - Log hiện ngay khi trang trả kết quả, và ghi đủ câu trên trang lẫn mã lỗi.
 - Thời gian nghỉ trước khi bấm Bắt đầu lại được đếm ngược từng giây.
