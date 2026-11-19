@@ -22,12 +22,8 @@ function clearBadge() {
 /* Log lưu từ bản trước: lỗi tạm thời (429, 5xx, "thử lại sau"…) từng bị ghi là "lỗi" nên bị bỏ qua vĩnh viễn.
  * Đổi chúng thành "chưa rõ" và cắt log theo cách mới. Chỉ làm khi không có phiên đang chạy. */
 async function migrateLog(log) {
-  if (!Array.isArray(log) || !log.length) return;
-  const fixed = P.capLog(log.map(P.normalizeEntry).filter(Boolean), P.LIMITS.logCap);
-  const changed = fixed.length !== log.length || fixed.some(function (e, i) {
-    return !log[i] || e.code !== log[i].code || e.status !== log[i].status || e.at !== (log[i].at || "");
-  });
-  if (changed) await chrome.storage.local.set({ [K.log]: fixed });
+  const result = P.migrateLog(log);
+  if (result.changed) await chrome.storage.local.set({ [K.log]: result.log });
 }
 
 async function settle() {

@@ -142,7 +142,8 @@
     return /[a-z]/.test(word) && /[A-Z]/.test(word.slice(1));
   }
 
-  const WRAP_QUOTES = /^["'`“”‘’«»]+|["'`“”‘’«».!?…]+$/g;
+  /* Cắt ký tự không thuộc code ở hai đầu mỗi từ: ngoặc kép, dấu câu, dấu sao, emoji… ("DFABC123🔥", "**DFABC123**"). */
+  const EDGE_JUNK = /^[^A-Za-z0-9_-]+|[^A-Za-z0-9_-]+$/g;
 
   function codesInSegment(segment, strict) {
     const out = [];
@@ -151,7 +152,7 @@
       const words = parts[p].trim().split(/\s+/);
       const clean = [];
       for (let w = 0; w < words.length; w++) {
-        const word = words[w].replace(WRAP_QUOTES, "");
+        const word = words[w].replace(EDGE_JUNK, "");
         if (word) clean.push(word);
       }
       if (!clean.length) continue;
@@ -167,16 +168,26 @@
   }
 
   function codesInLine(line) {
+    /* Phần trong ngoặc thường là ghi chú ("(100 brick)", "(hết hạn 30/11)") nhưng cũng có khi là code ("(DFABC123)"):
+     * đọc riêng theo luật chặt. Giới hạn 120 ký tự để dòng toàn dấu mở ngoặc không làm treo popup. */
+    const notes = [];
     const text = line
       .replace(/https?:\/\/\S+/gi, " ")
-      .replace(/\s(?:#|\/\/).*$/, "")
+      .replace(/\s#(?=\s|$).*$|\s\/\/.*$/, "")
       .replace(/^(?:[-*•+>]+|\d{1,3}[.)])\s+/, "")
-      .replace(/[([{（【][^)\]}）】]*[)\]}）】]/g, " ");
+      .replace(/[([{（【]([^([{（【)\]}）】]{0,120})[)\]}）】]/g, function (m, inner) {
+        notes.push(inner);
+        return " ";
+      });
     /* "Code: ABC" → phần sau dấu hai chấm là giá trị. Phần trước chỉ nhận chữ rõ là code. */
     const segments = text.split(/[:：]/);
     const out = [];
     for (let i = 0; i < segments.length; i++) {
       const found = codesInSegment(segments[i], i < segments.length - 1);
+      for (let f = 0; f < found.length; f++) out.push(found[f]);
+    }
+    for (let n = 0; n < notes.length; n++) {
+      const found = codesInSegment(notes[n], true);
       for (let f = 0; f < found.length; f++) out.push(found[f]);
     }
     return out;
@@ -281,7 +292,7 @@
 
   function toDate(now) {
     if (now instanceof Date && !isNaN(now.getTime())) return now;
-    const n = Number(now);
+    const n = typeof now === "number" || typeof now === "string" ? Number(now) : NaN;
     return Number.isFinite(n) && n > 0 ? new Date(n) : new Date();
   }
 
@@ -297,8 +308,9 @@
 
   function formatTime(iso) {
     if (!iso) return "";
+    if (typeof iso !== "string" && typeof iso !== "number" && !(iso instanceof Date)) return "";
     const date = new Date(iso);
-    if (isNaN(date.getTime())) return String(iso);
+    if (isNaN(date.getTime())) return squash(iso).slice(0, 40);
     return pad(date.getDate()) + "/" + pad(date.getMonth() + 1) + "/" + date.getFullYear()
       + " " + pad(date.getHours()) + ":" + pad(date.getMinutes()) + ":" + pad(date.getSeconds());
   }
@@ -420,7 +432,13 @@
     const s = normalizeSettings(opts.settings);
     const p = profileFor(s.protect);
     const done = s.skipLogged ? settledCodes(opts.log) : new Set();
-    const fresh = codes.filter(function (c) { return !done.has(c); });
+    /* Code chưa từng có trong log nhập trước; code đã có (vd từng ghi chưa rõ) xếp xuống cuối,
+     * để một code cứ gặp lỗi tạm thời không chặn các code mới ở mỗi lần chạy. */
+    const seen = new Set();
+    const logList = Array.isArray(opts.log) ? opts.log : [];
+    for (let i = 0; i < logList.length; i++) if (logList[i] && isCodeToken(logList[i].code)) seen.add(logList[i].code);
+    const pending = codes.filter(function (c) { return !done.has(c); });
+    const fresh = pending.filter(function (c) { return !seen.has(c); }).concat(pending.filter(function (c) { return seen.has(c); }));
     const g = gate(opts.attempts, s.protect, now);
     const room = Math.max(0, Math.min(p.perRun, g.left));
     const queue = fresh.slice(0, room);
@@ -669,8 +687,8 @@
     const detail = squash(e.detail).slice(0, LIMITS.detailCap);
     /* Log cũ có thể ghi lỗi tạm thời là "lỗi": đổi thành "chưa rõ" để code đó còn được nhập lại. */
     if (status === "error" && looksTransient(detail)) status = "unknown";
-    const atText = typeof e.atText === "string" ? e.atText.slice(0, 40) : "";
-    let at = typeof e.at === "string" ? e.at.slice(0, 40) : "";
+    const atText = typeof e.atText === "string" ? squash(e.atText).slice(0, 40) : "";
+    let at = typeof e.at === "string" ? squash(e.at).slice(0, 40) : "";
     if (!at && atText) at = parseTimeText(atText);
     return {
       id: typeof e.id === "string" ? e.id.slice(0, 40) : "",
@@ -885,6 +903,18 @@
     return capLog(order.map(function (o) { return o.e; }), cap);
   }
 
+  /* Sửa log lưu từ bản trước: lỗi tạm thời từng ghi "lỗi" đổi thành "chưa rõ", giờ dạng chữ thành mốc thời gian,
+   * cắt theo cách mới. Trả về log mới và có thay đổi hay không (để chỉ ghi lại khi cần). */
+  function migrateLog(log) {
+    if (!Array.isArray(log) || !log.length) return { log: Array.isArray(log) ? log : [], changed: false };
+    const fixed = capLog(log.map(normalizeEntry).filter(Boolean), LIMITS.logCap);
+    const changed = fixed.length !== log.length || fixed.some(function (e, i) {
+      const old = log[i];
+      return !old || e.code !== old.code || e.status !== old.status || e.at !== (old.at || "");
+    });
+    return { log: changed ? fixed : log, changed: changed };
+  }
+
   /* ---------- Trạng thái chạy ---------- */
 
   function isRunActive(run, now) {
@@ -919,6 +949,7 @@
     looksTransient: looksTransient,
     parseTimeText: parseTimeText,
     capLog: capLog,
+    migrateLog: migrateLog,
     sanitizeText: sanitizeText,
     isCodeToken: isCodeToken,
     looksLikeCode: looksLikeCode,

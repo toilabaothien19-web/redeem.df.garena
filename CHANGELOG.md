@@ -16,6 +16,11 @@ Tập trung vào log: xóa, xuất, nạp và đối chiếu code.
 - Popup ghi rõ bỏ qua bao nhiêu code đã có trong log (bao nhiêu dùng được, bao nhiêu lỗi). Sau khi nạp log thì báo kết quả đối chiếu với danh sách hiện tại.
 - Hộp xác nhận Xóa log nói rõ code sẽ không còn được bỏ qua và nhắc xuất log trước.
 - Ngày giờ vô lý trong file log (vd 32/13) bị bỏ qua thay vì bị đổi thành một ngày khác.
+- Code từng ghi chưa rõ được xếp xuống cuối hàng đợi; code chưa có trong log nhập trước.
+- Popup cũng tự sửa log cũ khi mở, phòng trường hợp cập nhật mà quên bấm tải lại.
+- Đọc danh sách code: nhận code dán kèm emoji, dấu sao, dấu câu hay ngoặc kép kiểu Nhật (`DFABC123🔥`, `**DFABC123**`, `「DFABC123」`) và code nằm trong ngoặc (`(DFABC123)`); `(5000)` vẫn không bị tính. Dòng `#` ở đầu vẫn là chú thích; `#` giữa dòng chỉ là chú thích khi có khoảng trắng phía sau.
+- Dán một dòng rất dài toàn dấu mở ngoặc không còn làm treo popup (trước đây 200 KB mất khoảng 20 giây, nay vài mili giây).
+- Đọc giờ, xuất log không ném lỗi với dữ liệu hỏng trong bộ nhớ (thử ngẫu nhiên 20.000 lần).
 - README nói đúng giới hạn: script trên chính trang Garena, nếu cố tình sửa hàm có sẵn của trình duyệt, có thể làm sai câu kết quả ghi vào log.
 
 ## 1.0.1

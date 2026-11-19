@@ -94,7 +94,7 @@ Hạn mức được đếm theo từng lần thật sự bấm Đổi, nằm tr
 - Mỗi dòng một code là chắc nhất. Code gồm chữ, số, `_` hoặc `-`, dài 4–80 ký tự.
 - Dòng bắt đầu bằng `#` hoặc `//` bị bỏ qua. Phần sau ` #` hoặc ` //` cuối dòng cũng vậy.
 - Một dòng có thể chứa nhiều code, ngăn bằng dấu phẩy, chấm phẩy, `|`, tab hoặc khoảng trắng.
-- Dán từ bài viết cũng được: `1. DFABC123`, `Code: DFABC123`, `DFABC123 - 100 brick`, `DFABC123 (hết hạn 30/11)` đều chỉ lấy `DFABC123`.
+- Dán từ bài viết cũng được: `1. DFABC123`, `Code: DFABC123`, `DFABC123 - 100 brick`, `DFABC123 (hết hạn 30/11)`, `DFABC123🔥`, `**DFABC123**`, `(DFABC123)` đều chỉ lấy `DFABC123`. Phần trong ngoặc chỉ lấy chữ rõ là code, nên `(5000)` không bị tính.
 - Trên dòng có nhiều chữ, chỉ chữ trông rõ là code mới được lấy (có số, bắt đầu bằng `DF`, viết hoa dài từ 8 ký tự, hoặc kiểu `TrickOrTreat`), để không tốn một lần thử cho chữ như `brick` hay `Delta`. Code nào đứng một mình trên dòng thì luôn được lấy.
 - Tối đa 1000 code và 200 KB mỗi lần.
 
@@ -105,9 +105,11 @@ Hạn mức được đếm theo từng lần thật sự bấm Đổi, nằm tr
 - Lọc theo từng loại. **Chép mã lỗi** copy đúng dòng đó.
 - Log giữ tối đa 5000 lượt. Khi đầy, lượt cũ đã có lượt mới hơn của cùng code bị bỏ trước, rồi tới lượt chưa rõ, nên thông tin dùng để bỏ qua code được giữ lâu nhất có thể.
 
-**Đối chiếu với log.** Khi bật "Bỏ qua code đã có trong log", mỗi code trong danh sách được so với log theo kết quả tốt nhất của nó: đã dùng được hoặc đã lỗi thì bỏ qua, chưa rõ hoặc chưa có thì nhập. Ngay dưới ô số liệu, popup ghi rõ bỏ qua bao nhiêu code và vì sao. So khớp phân biệt chữ hoa/thường, để một code gõ sai hoa/thường không chặn code đúng.
+**Đối chiếu với log.** Khi bật "Bỏ qua code đã có trong log", mỗi code trong danh sách được so với log theo kết quả tốt nhất của nó: đã dùng được hoặc đã lỗi thì bỏ qua, chưa rõ hoặc chưa có thì nhập. Ngay dưới ô số liệu, popup ghi rõ bỏ qua bao nhiêu code và vì sao. So khớp phân biệt chữ hoa/thường, để một code gõ sai hoa/thường không chặn code đúng. Code chưa có trong log được nhập trước; code từng ghi chưa rõ xếp xuống cuối, để một code cứ gặp lỗi tạm thời không chặn các code mới.
 
 **Xuất log** ra file `.txt` gồm các phần DÙNG ĐƯỢC, LỖI, CHƯA RÕ (sẽ nhập lại), rồi CHI TIẾT từng lượt. Đọc file trước khi chia sẻ.
+
+Cập nhật tiện ích mà quên bấm tải lại thì lần mở popup đầu tiên cũng tự sửa log lưu từ bản cũ.
 
 **Tải log lên** để gộp file log đã xuất (của bản này, hoặc của 0.5.0 beta / 1.9.9 cũ), tối đa 2 MB. Lượt trùng không bị thêm lại. Lỗi tạm thời mà bản cũ ghi là "lỗi" được tính lại thành "chưa rõ". Sau khi nạp, popup cho biết bao nhiêu code trong danh sách hiện tại đã có trong log.
 

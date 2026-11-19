@@ -163,7 +163,11 @@ test("kế hoạch bỏ code đã có trong log và cắt theo trần mỗi lầ
   assert.equal(pl.skipped, 2);
   assert.equal(pl.fresh, 38);
   assert.equal(pl.queue.length, 30);
-  assert.equal(pl.queue[0], "DFPLAN2");
+  // Code chưa từng có trong log nhập trước; code từng ghi chưa rõ (DFPLAN2) xếp cuối hàng.
+  assert.equal(pl.queue[0], "DFPLAN3");
+  assert.ok(!pl.queue.includes("DFPLAN2"));
+  const short = P.plan({ codes: ["DFPLAN2", "DFPLAN3", "DFPLAN4"], log, settings: { protect: true }, attempts: [], now: NOW });
+  assert.deepEqual(short.queue, ["DFPLAN3", "DFPLAN4", "DFPLAN2"]);
 });
 
 test("kế hoạch cắt theo hạn mức còn lại", () => {
@@ -534,5 +538,45 @@ test("đối chiếu danh sách với log theo trạng thái tốt nhất của 
   assert.deepEqual(P.overlap(["DFA00001", "DFB00002", "DFC00003", "DFD00004"], log), { ok: 1, error: 1, unknown: 1, fresh: 1 });
   const pl = P.plan({ codes: ["DFA00001", "DFB00002", "DFC00003", "DFD00004"], log, now: NOW });
   assert.equal(pl.skipped, 2);
-  assert.deepEqual(pl.queue, ["DFC00003", "DFD00004"]);
+  assert.deepEqual(pl.queue, ["DFD00004", "DFC00003"]);
+});
+
+test("đọc code dán từ mạng xã hội: emoji, dấu sao, ngoặc, dấu câu", () => {
+  const cases = {
+    "DFABC123🔥": ["DFABC123"],
+    "🎁DFABC123": ["DFABC123"],
+    "Nhập code (DFABC123) để nhận quà": ["DFABC123"],
+    "「DFABC123」": ["DFABC123"],
+    "DFABC123。": ["DFABC123"],
+    "**DFABC123**": ["DFABC123"],
+    "DFABC123 (5000)": ["DFABC123"],
+    "DFABC123 [x2] (hết hạn 30/11)": ["DFABC123"],
+    "Code #DFHASH12 nhé": ["DFHASH12"],
+    "DFKEEP99 # ghi chú": ["DFKEEP99"],
+    "#DFABC123": [],
+    "Hello!": ["Hello"],
+    "mã-tiếng-việt": [],
+  };
+  for (const [input, want] of Object.entries(cases)) assert.deepEqual(P.parseCodes(input), want, input);
+});
+
+test("dòng toàn dấu mở ngoặc không làm treo bộ đọc", () => {
+  const t = Date.now();
+  P.parseCodes("(".repeat(200000));
+  P.parseCodes("{[(".repeat(66000));
+  assert.ok(Date.now() - t < 1000);
+});
+
+test("sửa log lưu từ bản trước, chỉ báo thay đổi khi thật sự có", () => {
+  const old = [
+    { id: "a", at: new Date(NOW).toISOString(), code: "DFOLD001", status: "error", detail: "Too Many Requests | 429", serverCode: 429 },
+    { id: "b", at: new Date(NOW + 1).toISOString(), code: "DFOLD002", status: "error", detail: "error_hint_400068 | The current cdkey has reached the redemption limit", serverCode: 400068 },
+  ];
+  const first = P.migrateLog(old);
+  assert.equal(first.changed, true);
+  assert.deepEqual(first.log.map((e) => e.status), ["unknown", "error"]);
+  const second = P.migrateLog(first.log);
+  assert.equal(second.changed, false);
+  assert.equal(P.migrateLog([]).changed, false);
+  assert.equal(P.migrateLog(undefined).changed, false);
 });

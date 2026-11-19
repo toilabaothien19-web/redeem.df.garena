@@ -740,7 +740,16 @@
     chrome.storage.local.get(
       [K.draft, K.gap, K.random, K.skipLogged, K.protect, K.log, K.meta, K.run, K.attempts],
       function (data) {
-        apply(data || {});
+        const stored = data || {};
+        /* Quên bấm tải lại sau khi cập nhật thì service worker cũ không sửa log: popup tự sửa khi không có phiên chạy. */
+        if (!P.isRunActive(stored[K.run], Date.now())) {
+          const fixed = P.migrateLog(stored[K.log]);
+          if (fixed.changed) {
+            stored[K.log] = fixed.log;
+            storageSet({ [K.log]: fixed.log });
+          }
+        }
+        apply(stored);
         renderLog();
         refreshTab();
       },
