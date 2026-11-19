@@ -14,7 +14,11 @@ Trang đổi code: https://redeem.df.garena.sg/vi/cdkgarena.html
 
 ## Vì sao có tiện ích này
 
+Một ngày đẹp trời, tài khoản của tôi bị người khác xâm nhập và phá hoại, dẫn đến lệnh cấm 10 năm. Khi tôi kể chuyện này với bạn bè, một người hỏi tôi có dùng tiện ích nhập code nào của bên ngoài không. Tôi chắc chắn là không. Nhưng câu hỏi đó làm tôi nhận ra chuyện mất tài khoản kiểu này không phải lần đầu xảy ra.
+
 Đã có nhiều bài viết về việc dùng tiện ích nhập code của bên khác rồi bị xâm nhập tài khoản, bị đổi thông tin hoặc bị phá hoại. Những tiện ích đó thường xin quyền rộng, đọc cookie phiên đăng nhập, hoặc gửi dữ liệu về máy chủ riêng. Người dùng không đọc được mã, nên không biết tiện ích đang làm gì sau khi bấm Cài.
+
+Vì vậy tôi làm thêm một tiện ích nhập code nữa. Đúng vậy, lại thêm một tiện ích, nhưng lần này toàn bộ mã được công khai để bất kỳ ai cũng có thể tự kiểm tra độ an toàn rồi mới dùng.
 
 DF Code Garena được viết cho đúng một việc: điền code vào ô trên trang Garena và ghi lại câu trang trả về. Nó không thu thập tài khoản. Toàn bộ mã nằm trong kho này để ai cũng mở ra kiểm tra, không nhúng thư viện và không tải mã từ nơi khác lúc chạy.
 
