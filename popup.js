@@ -1,227 +1,92 @@
+/* DF Code Garena — popup.
+ * Chỉ đọc/ghi chrome.storage.local và nhắn tin với tab đổi quà. Không có lệnh mạng;
+ * CSP của trang này chặn mọi kết nối (connect-src 'none'). */
 (function () {
-  var $ = function (id) { return document.getElementById(id); };
-  var codesEl = $("codes");
-  var gapEl = $("gap");
-  var fileEl = $("file");
-  var countEl = $("count");
-  var hintEl = $("gapHint");
-  var gapValueEl = $("gapValue");
-  var etaEl = $("eta");
-  var randomEl = $("randomGap");
-  var protectEl = $("protect");
-  var haveEl = $("statHave");
-  var okEl = $("statOk");
-  var badEl = $("statBad");
-  var statusEl = $("status");
-  var progressEl = $("progress");
-  var logEl = $("log");
-  var startBtn = $("start");
-  var stopBtn = $("stop");
-  var exportBtn = $("export");
-  var clearBtn = $("clearLog");
-  var skipEl = $("skipOk");
-  var tabId = null;
-  var pollTimer = null;
-  var logCache = [];
-  var metaCache = {};
-  var runActive = false;
-  var restUntil = 0;
-  var restTimer = null;
-  var extension = typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.id;
+  "use strict";
 
-  function setStatus(text, mode) {
-    statusEl.textContent = text;
-    statusEl.className = mode || "";
+  const P = window.DFParse;
+  const K = P.KEYS;
+  const $ = function (id) { return document.getElementById(id); };
+  const hasChrome = typeof chrome !== "undefined" && !!(chrome.runtime && chrome.runtime.id);
+  const VERSION = hasChrome ? chrome.runtime.getManifest().version : "";
+  const VIEW_CAP = 300;
+
+  const el = {};
+  [
+    "ver", "status", "statusBox", "statusAction", "codes", "count", "parseNote", "pick", "demo", "clearCodes", "file",
+    "protect", "protectInfo", "freePace", "randomGap", "gapBlock", "gap", "gapValue", "skipLogged",
+    "statTotal", "statFresh", "statQueue", "quota", "eta", "start", "stop", "progressBox", "barWrap", "bar", "runTally",
+    "progress", "logCount", "fAll", "fOk", "fError", "fUnknown", "log", "logMore", "export", "importLog", "clearLog",
+    "logFile", "ask", "askText", "askYes", "askNo",
+  ].forEach(function (id) { el[id] = $(id); });
+
+  const model = {
+    log: [],
+    run: null,
+    attempts: [],
+    meta: {},
+    tab: { id: null, state: hasChrome ? "checking" : "preview", running: false },
+    filter: "all",
+    flash: null,
+    starting: false,
+    stopAt: 0,
+    topId: "",
+  };
+
+  /* ---------- Tiện ích nhỏ ---------- */
+
+  function put(node, value) {
+    const text = String(value);
+    if (node.textContent !== text) node.textContent = text;
   }
 
-  function fold(el, open) {
-    if (!el) return;
-    var closed = el.classList.contains("is-closed");
-    if (open) {
-      if (!closed) return;
-      el.inert = false;
-      el.classList.remove("is-closed");
-      return;
+  function tone(node, name) {
+    node.classList.remove("ok", "bad", "warn");
+    if (name) node.classList.add(name);
+  }
+
+  function fold(node, open) {
+    const closed = node.classList.contains("is-closed");
+    if (open && closed) {
+      node.classList.remove("is-closed");
+      node.inert = false;
+    } else if (!open && !closed) {
+      node.classList.add("is-closed");
+      node.inert = true;
     }
-    if (closed) return;
-    el.classList.add("is-closed");
-    el.inert = true;
   }
 
-  function placeHint(text, anchor) {
-    if (runActive) return;
-    if (anchor && hintEl.previousElementSibling !== anchor) anchor.after(hintEl);
-    if (hintEl.textContent === text) return;
-    hintEl.textContent = text;
-  }
-
-  function renderCount() {
-    var codes = DFParse.parseCodes(codesEl.value);
-    var gap = DFParse.clampGap(gapEl.value);
-    var random = randomEl.checked;
-    var gapBlock = $("gapBlock");
-    var randomWrap = $("randomWrap");
-    var protectLabel = $("protectLabel");
-    var protect = !protectEl || protectEl.checked;
-    if (protect) {
-      fold(gapBlock, false);
-      fold(randomWrap, false);
-      placeHint("Mỗi code sau nghỉ ngẫu nhiên từ 20 đến 30 giây. Code đầu nhập ngay.", protectLabel);
-    } else if (random) {
-      fold(randomWrap, true);
-      fold(gapBlock, false);
-      placeHint("Mỗi code sau nghỉ một số giây bất kỳ từ 10 đến 15. Code đầu nhập ngay.", randomWrap);
-    } else {
-      fold(randomWrap, true);
-      fold(gapBlock, true);
-      if (gapValueEl) gapValueEl.textContent = gap + " giây";
-      placeHint("Kéo từ 5 đến 60 giây. Code đầu nhập ngay, các code sau mới nghỉ.", gapBlock.querySelector(".fold-inner"));
+  function tickStat(node, value) {
+    const text = String(value);
+    if (node.textContent === text) return;
+    if (node.dataset.ready === "1") {
+      node.classList.remove("tick");
+      void node.offsetWidth;
+      node.classList.add("tick");
     }
-    haveEl.textContent = String(codes.length);
-    countEl.textContent = codes.length + " code";
-    if (!runActive) {
-      var est = DFParse.estimateFinish(codes.length, gap, random, 0, undefined, protect);
-      etaEl.textContent = est.text;
-    }
-    return codes;
+    node.textContent = text;
+    node.dataset.ready = "1";
   }
 
-  function paintStats() {
-    var ok = 0;
-    var bad = 0;
-    for (var i = 0; i < logCache.length; i++) {
-      if (logCache[i].status === "ok") ok++;
-      else if (logCache[i].status === "error") bad++;
-    }
-    tickStat(okEl, String(ok));
-    tickStat(badEl, String(bad));
+  function flash(text, kind) {
+    model.flash = { text: text, kind: kind || "", at: Date.now() };
+    renderRun(Date.now());
   }
 
-  function tickStat(el, value) {
-    if (el.dataset.ready === "1" && el.textContent !== value) {
-      el.classList.remove("tick");
-      void el.offsetWidth;
-      el.classList.add("tick");
-    }
-    el.textContent = value;
-    el.dataset.ready = "1";
-  }
-
-  function copyText(text) {
-    function done() { progressEl.textContent = "Đã chép đúng mã lỗi."; }
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text, done); });
-      return;
-    }
-    fallbackCopy(text, done);
-  }
-
-  function fallbackCopy(text, done) {
-    var area = document.createElement("textarea");
-    area.value = text;
-    document.body.appendChild(area);
-    area.select();
-    try { document.execCommand("copy"); } catch (e) {}
-    area.remove();
-    done();
-  }
-
-  function bindCopy(btn, entry) {
-    btn.addEventListener("click", function () {
-      copyText(entry.code + "\t" + (entry.detail || ""));
+  function storageSet(values) {
+    if (!hasChrome) return Promise.resolve();
+    return new Promise(function (resolve) {
+      chrome.storage.local.set(values, function () {
+        void chrome.runtime.lastError;
+        resolve();
+      });
     });
   }
 
-  function renderLog(entries) {
-    logCache = Array.isArray(entries) ? entries : [];
-    var previous = logEl.getAttribute("data-top") || "";
-    logEl.textContent = "";
-    var view = logCache.slice().reverse();
-    for (var i = 0; i < view.length; i++) {
-      var entry = view[i];
-      var li = document.createElement("li");
-      li.className = entry.status === "ok" ? "ok" : entry.status === "unknown" ? "wait" : "bad";
-      if (i === 0 && previous && entry.id && entry.id !== previous) li.classList.add("fresh");
-      var code = document.createElement("b");
-      code.textContent = entry.code || "";
-      var detail = document.createElement("span");
-      detail.textContent = entry.detail || "";
-      var time = document.createElement("time");
-      time.textContent = DFParse.formatTime(entry.at);
-      li.append(code, detail, time);
-      if (entry.status === "error") {
-        var copy = document.createElement("button");
-        copy.type = "button";
-        copy.className = "copy";
-        copy.textContent = "Chép mã lỗi";
-        bindCopy(copy, entry);
-        li.appendChild(copy);
-      }
-      logEl.appendChild(li);
-    }
-    logEl.setAttribute("data-top", view.length && view[0].id ? view[0].id : "");
-    if (previous && view.length && view[0].id && view[0].id !== previous) {
-      logEl.scrollTo({ top: 0, behavior: "smooth" });
-    }
-    var has = logCache.length > 0;
-    exportBtn.disabled = !has;
-    clearBtn.disabled = runActive || !has;
-    $("importLog").disabled = runActive;
-    paintStats();
-  }
-
-  function renderRun(run) {
-    var active = !!(run && (run.phase === "running" || run.phase === "waiting"));
-    runActive = active;
-    clearBtn.disabled = active || !logCache.length;
-    $("importLog").disabled = active;
-    if (!run || !run.phase || run.phase === "idle") {
-      if (restLeft() > 0) {
-        startBtn.disabled = true;
-        return;
-      }
-      progressEl.textContent = "Chưa chạy.";
-      renderCount();
-      return;
-    }
-    var bits = [];
-    if (run.total) bits.push((run.index || 0) + "/" + run.total);
-    if (run.note) bits.push(run.note);
-    var line = bits.join(" · ") || "Chưa chạy.";
-    progressEl.textContent = line;
-    stopBtn.disabled = !extension || !active;
-    if (active) {
-      startBtn.disabled = true;
-      var remaining = Math.max(0, (run.total || 0) - (run.index || 0));
-      var extra = run.phase === "waiting" ? run.waitLeft || 0 : 0;
-      var est = DFParse.estimateFinish(remaining, DFParse.clampGap(gapEl.value), randomEl.checked, extra, undefined, protectEl.checked);
-      etaEl.textContent = "Còn " + remaining + " code. " + est.text;
-    } else {
-      renderCount();
-    }
-  }
-
-  function download(name, text) {
-    var blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-    var url = URL.createObjectURL(blob);
-    var link = document.createElement("a");
-    link.href = url;
-    link.download = name;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
-  }
-
-  function stampName() {
-    var parts = DFParse.formatTime(new Date().toISOString()).replace(/[/:]/g, "-").replace(/\s+/g, "_");
-    return "df-code-log-" + parts + ".txt";
-  }
-
-  function send(id, message) {
+  function send(tabId, message) {
     return new Promise(function (resolve) {
       try {
-        chrome.tabs.sendMessage(id, message, function (response) {
+        chrome.tabs.sendMessage(tabId, message, function (response) {
           if (chrome.runtime.lastError) resolve(null);
           else resolve(response || null);
         });
@@ -231,314 +96,629 @@
     });
   }
 
-  function isRedeemUrl(url) {
-    try {
-      var parsed = new URL(url);
-      return parsed.hostname === "redeem.df.garena.sg" && /^\/(?:[^/]+\/)?cdkgarena\.html$/i.test(parsed.pathname);
-    } catch (e) {
-      return false;
+  function ask(text, yesLabel) {
+    return new Promise(function (resolve) {
+      el.askText.textContent = text;
+      el.askYes.textContent = yesLabel || "Đồng ý";
+      function done(value) {
+        el.askYes.removeEventListener("click", onYes);
+        el.askNo.removeEventListener("click", onNo);
+        el.ask.removeEventListener("cancel", onCancel);
+        if (el.ask.open) el.ask.close();
+        resolve(value);
+      }
+      function onYes() { done(true); }
+      function onNo() { done(false); }
+      function onCancel(event) {
+        event.preventDefault();
+        done(false);
+      }
+      el.askYes.addEventListener("click", onYes);
+      el.askNo.addEventListener("click", onNo);
+      el.ask.addEventListener("cancel", onCancel);
+      el.ask.showModal();
+      el.askNo.focus();
+    });
+  }
+
+  function copyText(text, done) {
+    function fallback() {
+      const area = document.createElement("textarea");
+      area.value = text;
+      document.body.appendChild(area);
+      area.select();
+      try {
+        document.execCommand("copy");
+      } catch (e) {}
+      area.remove();
+      done();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else {
+      fallback();
     }
   }
+
+  function download(name, text) {
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+  }
+
+  function stampName() {
+    const d = new Date();
+    const p = function (n) { return String(n).padStart(2, "0"); };
+    return "df-code-log-" + d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate())
+      + "_" + p(d.getHours()) + "-" + p(d.getMinutes()) + "-" + p(d.getSeconds()) + ".txt";
+  }
+
+  function readTextFile(file) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function () { resolve(String(reader.result || "")); };
+      reader.onerror = function () { reject(reader.error); };
+      reader.readAsText(file, "utf-8");
+    });
+  }
+
+  /* ---------- Trạng thái suy ra ---------- */
+
+  function settings() {
+    return P.normalizeSettings({
+      protect: el.protect.checked,
+      randomGap: el.randomGap.checked,
+      gapSec: el.gap.value,
+      skipLogged: el.skipLogged.checked,
+    });
+  }
+
+  let analysisCache = { text: null, value: null };
+  function analysis() {
+    const text = el.codes.value;
+    if (analysisCache.text !== text) analysisCache = { text: text, value: P.analyzeCodes(text) };
+    return analysisCache.value;
+  }
+
+  function runActive(now) {
+    return P.isRunActive(model.run, now || Date.now());
+  }
+
+  /* ---------- Vẽ ---------- */
+
+  function renderSettings() {
+    const s = settings();
+    const active = runActive();
+    fold(el.freePace, !s.protect);
+    fold(el.gapBlock, !s.protect && !s.randomGap);
+    el.protectInfo.hidden = !s.protect;
+    put(el.gapValue, s.gapSec + " giây");
+    el.protect.disabled = active;
+    el.randomGap.disabled = active;
+    el.gap.disabled = active;
+    el.skipLogged.disabled = active;
+  }
+
+  function setStatus(text, toneName, action) {
+    put(el.status, text);
+    el.statusBox.dataset.tone = toneName || "idle";
+    if (action) {
+      put(el.statusAction, action);
+      el.statusAction.hidden = false;
+    } else {
+      el.statusAction.hidden = true;
+    }
+  }
+
+  function renderStatus(now) {
+    if (!hasChrome) {
+      setStatus("Bản xem trước. Cài tiện ích rồi mở trang đổi code để dùng.", "idle");
+      return;
+    }
+    if (runActive(now)) {
+      setStatus(
+        model.tab.running
+          ? "Đang nhập code trên trang này. Đóng popup không làm dừng."
+          : "Đang nhập code ở một tab đổi quà khác. Bấm Dừng nếu muốn dừng.",
+        "run",
+      );
+      return;
+    }
+    switch (model.tab.state) {
+      case "other":
+        setStatus("Chỉ chạy trên trang đổi code Garena.", "warn", "Mở trang");
+        break;
+      case "reload":
+        setStatus("Trang đổi code cần tải lại (F5) để tiện ích kết nối.", "warn", "Tải lại");
+        break;
+      case "loggedOut":
+        setStatus("Trang đang mở nhưng chưa đăng nhập Garena.", "warn");
+        break;
+      case "ready":
+        setStatus("Sẵn sàng trên trang đổi code.", "ready");
+        break;
+      default:
+        setStatus("Đang kiểm tra trang…", "idle");
+    }
+  }
+
+  function renderPlan(now) {
+    const a = analysis();
+    const s = settings();
+    const active = runActive(now);
+    const pl = P.plan({ codes: a.codes, log: model.log, settings: s, attempts: model.attempts, now: now });
+    const room = Math.min(pl.fresh, pl.perRun, pl.quota.left);
+
+    put(el.count, a.codes.length + " code");
+    const notes = [];
+    if (a.duplicates) notes.push("bỏ " + a.duplicates + " code trùng");
+    if (a.ignored) notes.push(a.ignored + " dòng không nhận ra code");
+    if (a.truncated) notes.push("chỉ lấy " + P.LIMITS.maxCodes + " code đầu");
+    el.parseNote.hidden = !notes.length;
+    put(el.parseNote, notes.length ? notes.join(", ").replace(/^./, function (c) { return c.toUpperCase(); }) + "." : "");
+
+    tickStat(el.statTotal, a.codes.length);
+    tickStat(el.statFresh, pl.fresh);
+    tickStat(el.statQueue, active ? Math.max(0, (model.run.total || 0) - (model.run.index || 0)) : room);
+
+    const q = pl.quota;
+    put(el.quota, "Hạn mức còn " + Math.max(0, q.capHour - q.usedHour) + "/" + q.capHour + " trong 60 phút · "
+      + Math.max(0, q.capDay - q.usedDay) + "/" + q.capDay + " trong 24 giờ.");
+
+    if (active) {
+      const run = model.run;
+      const left = Math.max(0, (run.total || 0) - (run.index || 0));
+      const waitLeft = run.phase === "waiting" && run.wait ? Math.max(0, (run.wait.until - now) / 1000) : 0;
+      const est = P.estimate(left, run.settings, waitLeft);
+      put(el.eta, left ? "Còn " + left + " code. " + P.describeEstimate(est, now) : "");
+      tone(el.eta, "");
+    } else if (!a.codes.length) {
+      put(el.eta, "Dán code hoặc mở file .txt để bắt đầu.");
+      tone(el.eta, "");
+    } else if (!pl.ok) {
+      put(el.eta, pl.reason);
+      tone(el.eta, "warn");
+    } else {
+      const est = P.estimate(pl.queue.length, s, 0);
+      let text = "Lần này nhập " + pl.queue.length + " code. " + P.describeEstimate(est, now);
+      if (pl.fresh > pl.queue.length) text += " Còn " + (pl.fresh - pl.queue.length) + " code cho lần sau.";
+      put(el.eta, text);
+      tone(el.eta, "");
+    }
+
+    const canStart = hasChrome && !active && !model.starting && model.tab.state === "ready" && pl.ok;
+    el.start.disabled = !canStart;
+    put(el.start, active ? "Đang chạy…" : model.starting ? "Đang bắt đầu…" : canStart ? "Bắt đầu · " + pl.queue.length + " code" : "Bắt đầu");
+  }
+
+  function renderRun(now) {
+    const run = model.run;
+    const active = runActive(now);
+    el.stop.disabled = !hasChrome || !active || (model.stopAt && run && model.stopAt >= (run.startedAt || 0));
+
+    const showRun = run && run.total && run.phase && run.phase !== "idle";
+    el.progressBox.hidden = !showRun;
+    if (showRun) {
+      const stale = !active && (run.phase === "running" || run.phase === "waiting");
+      el.progressBox.dataset.phase = stale ? "stopped" : run.phase;
+      const index = Math.min(run.total, run.index || 0);
+      el.bar.style.width = Math.round((index / run.total) * 100) + "%";
+      el.barWrap.setAttribute("aria-valuemax", String(run.total));
+      el.barWrap.setAttribute("aria-valuenow", String(index));
+      const t = run.tally || {};
+      const bits = [index + "/" + run.total + " code", (t.ok || 0) + " dùng được", (t.error || 0) + " lỗi"];
+      if (t.unknown) bits.push(t.unknown + " chưa rõ");
+      if (run.skipped) bits.push("bỏ qua " + run.skipped + " code đã có trong log");
+      put(el.runTally, bits.join(" · "));
+    }
+
+    let line = "Chưa chạy.";
+    let kind = "";
+    if (run && run.phase && run.phase !== "idle") {
+      if (active && run.phase === "waiting" && run.wait) {
+        const left = Math.max(0, (run.wait.until - now) / 1000);
+        line = run.wait.kind === "errors"
+          ? "5 lỗi liên tiếp. Tự nhập tiếp sau " + P.formatTenth(left) + " giây."
+          : "Nghỉ " + Math.ceil(left) + " giây trước code tiếp theo.";
+      } else if (active) {
+        line = run.note || "Đang chạy.";
+      } else if (run.phase === "running" || run.phase === "waiting") {
+        line = "Phiên trước bị ngắt giữa chừng (trang hoặc trình duyệt đã đóng).";
+        kind = "warn";
+      } else {
+        line = run.note || "Đã dừng.";
+        kind = run.phase === "done" ? "ok" : "warn";
+      }
+    }
+    const f = model.flash;
+    if (f && now - f.at < 8000 && (!run || !active || f.at > (run.updatedAt || 0))) {
+      line = f.text;
+      kind = f.kind;
+    }
+    put(el.progress, line);
+    tone(el.progress, kind);
+  }
+
+  function makeEntry(e, fresh) {
+    const status = e.status === "ok" || e.status === "unknown" ? e.status : "error";
+    const li = document.createElement("li");
+    li.className = status === "ok" ? "ok" : status === "unknown" ? "wait" : "bad";
+    if (fresh) li.classList.add("fresh");
+
+    const head = document.createElement("div");
+    head.className = "head";
+    const code = document.createElement("b");
+    code.textContent = e.code;
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = status === "ok" ? "Dùng được" : status === "unknown" ? "Chưa rõ" : "Lỗi";
+    head.append(code, tag);
+
+    const detail = document.createElement("span");
+    detail.className = "detail";
+    detail.textContent = e.detail || "";
+
+    const foot = document.createElement("div");
+    foot.className = "foot-row";
+    const time = document.createElement("time");
+    time.textContent = P.entryTime(e) || "từ file log";
+    if (e.at) time.dateTime = e.at;
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.className = "small";
+    copy.textContent = status === "error" ? "Chép mã lỗi" : "Chép code";
+    copy.addEventListener("click", function () {
+      const text = status === "ok" ? e.code : e.code + "\t" + (e.detail || "");
+      copyText(text, function () {
+        copy.textContent = "Đã chép";
+        setTimeout(function () { copy.textContent = status === "error" ? "Chép mã lỗi" : "Chép code"; }, 1200);
+      });
+    });
+    foot.append(time, copy);
+
+    li.append(head, detail, foot);
+    return li;
+  }
+
+  function renderLog() {
+    const counts = P.tally(model.log);
+    put(el.fAll, counts.all);
+    put(el.fOk, counts.ok);
+    put(el.fError, counts.error);
+    put(el.fUnknown, counts.unknown);
+    put(el.logCount, counts.all ? counts.all + " lượt" : "");
+    document.querySelectorAll(".chip").forEach(function (chip) {
+      chip.setAttribute("aria-pressed", chip.dataset.filter === model.filter ? "true" : "false");
+    });
+
+    const newest = model.log.length ? model.log[model.log.length - 1] : null;
+    const newestId = newest && newest.id ? newest.id : "";
+    const changedTop = !!(model.topId && newestId && newestId !== model.topId);
+
+    const frag = document.createDocumentFragment();
+    let shown = 0;
+    for (let i = model.log.length - 1; i >= 0 && shown < VIEW_CAP; i--) {
+      const e = model.log[i];
+      if (!e) continue;
+      const status = e.status === "ok" || e.status === "unknown" ? e.status : "error";
+      if (model.filter !== "all" && status !== model.filter) continue;
+      frag.appendChild(makeEntry(e, changedTop && shown === 0 && e === newest));
+      shown++;
+    }
+    el.log.textContent = "";
+    el.log.appendChild(frag);
+    el.log.dataset.filtered = model.filter === "all" ? "0" : "1";
+    if (changedTop) el.log.scrollTo({ top: 0, behavior: "smooth" });
+    model.topId = newestId;
+
+    const matching = model.filter === "all" ? counts.all : counts[model.filter];
+    el.logMore.hidden = matching <= VIEW_CAP;
+    put(el.logMore, matching > VIEW_CAP ? "Đang hiện " + VIEW_CAP + "/" + matching + " dòng mới nhất. Xuất log để xem đủ." : "");
+    renderLogButtons(Date.now());
+  }
+
+  function renderLogButtons(now) {
+    const active = runActive(now);
+    el.export.disabled = !model.log.length;
+    el.clearLog.disabled = !model.log.length || active;
+    el.importLog.disabled = active;
+  }
+
+  function renderDynamic() {
+    const now = Date.now();
+    renderLogButtons(now);
+    renderSettings();
+    renderStatus(now);
+    renderPlan(now);
+    renderRun(now);
+  }
+
+  function renderAll() {
+    renderDynamic();
+    renderLog();
+  }
+
+  /* ---------- Tab đổi quà ---------- */
 
   async function refreshTab() {
-    if (!extension) return;
-    var tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    var tab = tabs && tabs[0];
-    if (!tab || !tab.id || !isRedeemUrl(tab.url || "")) {
-      tabId = null;
-      setStatus("Chỉ chạy khi tab đổi code Garena đang mở.", "bad");
-      startBtn.disabled = true;
-      return;
+    if (!hasChrome) return;
+    let tab = null;
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      tab = tabs && tabs[0];
+    } catch (e) {
+      tab = null;
     }
-    tabId = tab.id;
-    var response = await send(tab.id, { kind: "probe" });
-    if (!response || !response.ok) {
-      setStatus("Hãy tải lại trang đổi code (F5), rồi mở lại tiện ích.", "bad");
-      startBtn.disabled = true;
-      return;
-    }
-    if (response.running) {
-      setStatus("Đang nhập code trên trang này.", "run");
-      startBtn.disabled = true;
-      stopBtn.disabled = false;
-      return;
-    }
-    stopBtn.disabled = true;
-    if (!response.loggedIn) {
-      setStatus("Trang đang mở nhưng chưa đăng nhập.", "bad");
-      startBtn.disabled = true;
-      return;
-    }
-    setStatus("Sẵn sàng trên trang đổi code.", "ready");
-    startBtn.disabled = restLeft() > 0;
-  }
-
-  function restLeft() {
-    return Math.max(0, Math.ceil((restUntil - Date.now()) / 1000));
-  }
-
-  function paintRest() {
-    var left = restLeft();
-    if (left <= 0) {
-      restUntil = 0;
-      if (restTimer) {
-        clearInterval(restTimer);
-        restTimer = null;
+    /* Không có quyền đọc địa chỉ tab thì hỏi thẳng tab: chỉ trang đổi code mới có runner.js để trả lời. */
+    const knownUrl = !!(tab && tab.url);
+    if (!tab || !tab.id || (knownUrl && !P.isRedeemUrl(tab.url))) {
+      model.tab = { id: null, state: "other", running: false };
+    } else {
+      const res = await send(tab.id, { kind: "probe" });
+      if (res && res.ok) {
+        model.tab = { id: tab.id, state: res.loggedIn ? "ready" : "loggedOut", running: !!res.running };
+      } else if (!knownUrl) {
+        model.tab = { id: null, state: "other", running: false };
+      } else {
+        model.tab = { id: tab.id, state: tab.status === "loading" ? "checking" : "reload", running: false };
       }
-      progressEl.textContent = "Đã hết thời gian nghỉ. Có thể bấm Bắt đầu.";
-      if (!runActive) startBtn.disabled = false;
-      if (extension) chrome.storage.local.set({ "dfcode.restUntil": 0 });
-      return;
     }
-    progressEl.textContent = "Cần nghỉ " + left + " giây trước khi bấm Bắt đầu lại.";
-    startBtn.disabled = true;
+    renderDynamic();
   }
 
-  function showRest(until) {
-    var next = Number(until) || 0;
-    if (next <= Date.now()) return;
-    restUntil = next;
-    paintRest();
-    if (!restTimer) restTimer = setInterval(paintRest, 250);
+  /* ---------- Lưu trữ ---------- */
+
+  function persistSettings() {
+    storageSet({
+      [K.gap]: el.gap.value,
+      [K.random]: el.randomGap.checked,
+      [K.skipLogged]: el.skipLogged.checked,
+      [K.protect]: el.protect.checked,
+    });
   }
 
   function persistDraft() {
-    if (!extension) return;
-    try {
-      chrome.storage.local.set({
-        "dfcode.draft": codesEl.value,
-        "dfcode.gap": gapEl.value,
-        "dfcode.random": randomEl.checked,
-        "dfcode.skipLogged": skipEl.checked,
-        "dfcode.protect": protectEl.checked,
-      }, function () { void chrome.runtime.lastError; });
-    } catch (e) {}
+    storageSet({ [K.draft]: el.codes.value });
   }
 
-  codesEl.addEventListener("input", function () {
-    renderCount();
+  function setCodes(text) {
+    el.codes.value = text;
     persistDraft();
+    renderDynamic();
+  }
+
+  function apply(data) {
+    if (typeof data[K.draft] === "string" && document.activeElement !== el.codes) el.codes.value = data[K.draft];
+    if ((typeof data[K.gap] === "string" || typeof data[K.gap] === "number") && document.activeElement !== el.gap) {
+      el.gap.value = String(P.clampGap(data[K.gap]));
+    }
+    if (typeof data[K.random] === "boolean") el.randomGap.checked = data[K.random];
+    if (typeof data[K.skipLogged] === "boolean") el.skipLogged.checked = data[K.skipLogged];
+    if (typeof data[K.protect] === "boolean") el.protect.checked = data[K.protect];
+    if (K.attempts in data) model.attempts = Array.isArray(data[K.attempts]) ? data[K.attempts] : [];
+    if (K.meta in data) model.meta = data[K.meta] && typeof data[K.meta] === "object" ? data[K.meta] : {};
+    if (K.run in data) model.run = data[K.run] && typeof data[K.run] === "object" ? data[K.run] : null;
+    if (K.log in data) {
+      model.log = Array.isArray(data[K.log]) ? data[K.log].filter(function (e) { return e && P.isCodeToken(e.code); }) : [];
+      renderLog();
+    }
+    renderDynamic();
+  }
+
+  /* ---------- Sự kiện ---------- */
+
+  el.codes.addEventListener("input", function () {
+    persistDraft();
+    renderDynamic();
   });
-  gapEl.addEventListener("input", function () {
-    renderCount();
-    persistDraft();
+  el.codes.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !el.start.disabled) {
+      event.preventDefault();
+      el.start.click();
+    }
   });
-  gapEl.addEventListener("blur", function () {
-    gapEl.value = String(DFParse.clampGap(gapEl.value));
-    renderCount();
-    persistDraft();
+  el.gap.addEventListener("input", function () {
+    persistSettings();
+    renderDynamic();
   });
-  skipEl.addEventListener("change", persistDraft);
-  randomEl.addEventListener("change", function () {
-    renderCount();
-    persistDraft();
-  });
-  protectEl.addEventListener("change", function () {
-    renderCount();
-    persistDraft();
+  [el.protect, el.randomGap, el.skipLogged].forEach(function (node) {
+    node.addEventListener("change", function () {
+      persistSettings();
+      renderDynamic();
+    });
   });
 
-  $("pick").addEventListener("click", function () { fileEl.click(); });
-  $("demo").addEventListener("click", function () {
-    var source = $("demoSource");
-    var text = source ? source.textContent.replace(/^\s+|\s+$/g, "") : "";
-    if (!text) {
-      progressEl.textContent = "Không nạp được code demo.";
-      return;
+  el.statusAction.addEventListener("click", function () {
+    if (!hasChrome) return;
+    if (model.tab.state === "other") {
+      chrome.tabs.create({ url: P.REDEEM_PAGE });
+      window.close();
+    } else if (model.tab.state === "reload" && model.tab.id) {
+      chrome.tabs.reload(model.tab.id);
+      model.tab.state = "checking";
+      renderDynamic();
     }
-    if (!window.confirm("Danh sách demo có thể đã hết hạn. Mỗi code sai là một lần thử trên tài khoản của bạn. Nạp danh sách này?")) return;
-    if (codesEl.value.trim() && !window.confirm("Thay danh sách đang có bằng Demo Code?")) return;
-    codesEl.value = text;
-    renderCount();
-    persistDraft();
-    progressEl.textContent = "Đã nạp Demo Code.";
   });
-  $("clearCodes").addEventListener("click", function () {
-    if (!codesEl.value.trim()) return;
-    if (!window.confirm("Xóa toàn bộ danh sách code đang có?")) return;
-    codesEl.value = "";
-    renderCount();
-    persistDraft();
-    progressEl.textContent = "Đã xóa toàn bộ danh sách code.";
-  });
-  fileEl.addEventListener("change", function () {
-    var file = fileEl.files && fileEl.files[0];
-    fileEl.value = "";
+
+  el.pick.addEventListener("click", function () { el.file.click(); });
+  el.file.addEventListener("change", async function () {
+    const file = el.file.files && el.file.files[0];
+    el.file.value = "";
     if (!file) return;
-    if (file.size > 200 * 1024) {
-      progressEl.textContent = "File quá lớn. Chỉ nhận file .txt dưới 200KB.";
+    if (file.size > P.LIMITS.maxFileBytes) {
+      flash("File quá lớn. Chỉ nhận file .txt dưới 200 KB.", "bad");
       return;
     }
-    var reader = new FileReader();
-    reader.onload = function () {
-      var text = String(reader.result || "");
-      codesEl.value = codesEl.value.trim() ? codesEl.value.replace(/\s*$/, "") + "\n" + text : text;
-      renderCount();
-      persistDraft();
-      progressEl.textContent = "Đã nạp " + file.name + ".";
-    };
-    reader.readAsText(file, "utf-8");
+    try {
+      const text = await readTextFile(file);
+      const before = analysis().codes.length;
+      setCodes(el.codes.value.trim() ? el.codes.value.replace(/\s*$/, "") + "\n" + text : text);
+      flash("Đã nạp " + file.name + ": thêm " + Math.max(0, analysis().codes.length - before) + " code.", "ok");
+    } catch (e) {
+      flash("Không đọc được file.", "bad");
+    }
   });
 
-  $("importLog").addEventListener("click", function () { $("logFile").click(); });
-  $("logFile").addEventListener("change", function () {
-    if (runActive) {
-      progressEl.textContent = "Dừng chạy trước khi nạp log.";
-      $("logFile").value = "";
+  el.demo.addEventListener("click", async function () {
+    const list = Array.isArray(window.DFDemoCodes) ? window.DFDemoCodes : [];
+    if (!list.length) {
+      flash("Không nạp được Demo Code.", "bad");
       return;
     }
-    var file = $("logFile").files && $("logFile").files[0];
-    $("logFile").value = "";
-    if (!file) return;
-    if (file.size > 200 * 1024) {
-      progressEl.textContent = "File quá lớn. Chỉ nhận file .txt dưới 200KB.";
-      return;
-    }
-    var reader = new FileReader();
-    reader.onload = function () {
-      var incoming = DFParse.parseLog(String(reader.result || ""));
-      if (!incoming.length) {
-        progressEl.textContent = "File không có log code. Cần file đã xuất từ tiện ích này.";
-        return;
-      }
-      var merged = DFParse.mergeLogs(logCache, incoming);
-      if (merged.length > 1000) merged = merged.slice(-1000);
-      renderLog(merged);
-      if (extension) chrome.storage.local.set({ "dfcode.log": merged });
-      progressEl.textContent = "Đã nạp " + incoming.length + " dòng log. Lần chạy sau bỏ qua code đã nhập và code lỗi.";
-    };
-    reader.readAsText(file, "utf-8");
+    const replacing = el.codes.value.trim() !== "";
+    const ok = await ask(
+      "Demo Code là danh sách mẫu " + list.length + " code, có thể đã hết hạn. Mỗi code sai là một lần thử trên tài khoản của bạn."
+        + (replacing ? " Danh sách đang có sẽ bị thay." : "") + " Nạp danh sách này?",
+      "Nạp Demo Code",
+    );
+    if (!ok) return;
+    setCodes(list.join("\n"));
+    flash("Đã nạp " + list.length + " Demo Code.", "ok");
   });
 
-  startBtn.addEventListener("click", async function () {
-    if (!extension || !tabId) return;
-    var codes = DFParse.parseCodes(codesEl.value);
-    if (!codes.length) {
-      progressEl.textContent = "Chưa có code hợp lệ.";
+  el.clearCodes.addEventListener("click", async function () {
+    if (!el.codes.value.trim()) return;
+    if (!(await ask("Xóa toàn bộ danh sách code trong ô? Log không bị xóa.", "Xóa danh sách"))) return;
+    setCodes("");
+    flash("Đã xóa danh sách code.");
+  });
+
+  document.querySelectorAll(".chip").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      model.filter = chip.dataset.filter || "all";
+      model.topId = "";
+      renderLog();
+    });
+  });
+
+  el.start.addEventListener("click", async function () {
+    if (!hasChrome || model.starting || model.tab.state !== "ready" || !model.tab.id) return;
+    const a = analysis();
+    const s = settings();
+    const pl = P.plan({ codes: a.codes, log: model.log, settings: s, attempts: model.attempts, now: Date.now() });
+    if (!pl.ok) {
+      flash(pl.reason, "warn");
       return;
     }
-    var random = randomEl.checked;
-    var gap = random ? 0 : DFParse.clampGap(gapEl.value);
-    if (!random) gapEl.value = String(gap);
-    if (!protectEl.checked && !window.confirm("Đã tắt bảo vệ tài khoản. Lần này tối đa 100 code, vẫn là nhập tự động trên tài khoản của bạn. Tiếp tục?")) {
-      return;
+    if (!s.protect) {
+      const ok = await ask(
+        "Đã tắt bảo vệ tài khoản. Lần này nhập tối đa " + pl.queue.length
+          + " code, vẫn là nhập tự động trên tài khoản của bạn. Tiếp tục?",
+        "Vẫn bắt đầu",
+      );
+      if (!ok) return;
     }
-    startBtn.disabled = true;
-    progressEl.textContent = "Đang bắt đầu…";
-    var payload = {
-      kind: "start",
-      codes: codes,
-      gapSec: gap,
-      randomGap: random,
-      skipLogged: skipEl.checked,
-      protect: protectEl.checked,
-    };
-    var response = await send(tabId, payload);
-    if (!response || !response.ok) {
-      if (response && response.restUntil) showRest(response.restUntil);
-      else progressEl.textContent = (response && response.reason) || "Không gửi được lệnh. Tải lại trang đổi code.";
+    model.starting = true;
+    flash("Đang bắt đầu…");
+    renderDynamic();
+    const res = await send(model.tab.id, { kind: "start", codes: a.codes, settings: s });
+    model.starting = false;
+    if (!res || !res.ok) {
+      flash((res && res.reason) || "Không gửi được lệnh. Tải lại trang đổi code (F5).", "bad");
       refreshTab();
       return;
     }
-    var pace = response.randomGap ? "nghỉ ngẫu nhiên 10–15 giây" : "nghỉ " + response.gapSec + " giây";
-    var extra = response.skipped ? " Bỏ qua " + response.skipped + " code đã có trong log." : "";
-    progressEl.textContent = "Bắt đầu " + response.total + " code, " + pace + "." + extra;
-    setStatus("Đang chạy. Đóng popup không làm dừng.", "run");
-    stopBtn.disabled = false;
+    flash(
+      "Bắt đầu " + res.total + " code, " + P.describePace(s).replace(/^[^,]+, /, "") + "."
+        + (res.skipped ? " Bỏ qua " + res.skipped + " code đã có trong log." : ""),
+      "ok",
+    );
+    refreshTab();
   });
 
-  stopBtn.addEventListener("click", async function () {
-    if (!extension || !tabId) return;
-    stopBtn.disabled = true;
-    await send(tabId, { kind: "stop" });
-    progressEl.textContent = "Sẽ dừng sau code hiện tại hoặc hết thời gian nghỉ.";
+  el.stop.addEventListener("click", async function () {
+    if (!hasChrome) return;
+    model.stopAt = Date.now();
+    el.stop.disabled = true;
+    await storageSet({ [K.stop]: model.stopAt });
+    if (model.tab.id && model.tab.running) send(model.tab.id, { kind: "stop" });
+    flash("Sẽ dừng sau code đang nhập, hoặc ngay nếu đang nghỉ.");
   });
 
-  exportBtn.addEventListener("click", function () {
-    if (!logCache.length) return;
-    var text = DFParse.formatLog(logCache, {
+  el.export.addEventListener("click", function () {
+    if (!model.log.length) return;
+    const text = P.formatLog(model.log, {
       exportedAt: new Date().toISOString(),
-      gapSec: metaCache.randomGap ? 0 : metaCache.gapSec || DFParse.clampGap(gapEl.value),
-      randomGap: !!(metaCache.randomGap || randomEl.checked),
+      version: VERSION,
+      settings: (model.meta && model.meta.settings) || settings(),
     });
     download(stampName(), text);
+    flash("Đã xuất log. Đọc file trước khi chia sẻ.", "ok");
   });
 
-  clearBtn.addEventListener("click", function () {
-    if (runActive) {
-      progressEl.textContent = "Dừng chạy trước khi xóa log.";
+  el.importLog.addEventListener("click", function () { el.logFile.click(); });
+  el.logFile.addEventListener("change", async function () {
+    const file = el.logFile.files && el.logFile.files[0];
+    el.logFile.value = "";
+    if (!file) return;
+    if (runActive()) {
+      flash("Dừng chạy trước khi nạp log.", "warn");
       return;
     }
-    if (!logCache.length) return;
-    if (!window.confirm("Xóa toàn bộ log trên tiện ích này?")) return;
-    renderLog([]);
-    metaCache = {};
-    if (extension) {
-      chrome.storage.local.set({ "dfcode.log": [], "dfcode.meta": {}, "dfcode.run": { phase: "idle" } });
-      chrome.runtime.sendMessage({ kind: "badge", text: "" });
+    if (file.size > P.LIMITS.maxFileBytes) {
+      flash("File quá lớn. Chỉ nhận file .txt dưới 200 KB.", "bad");
+      return;
     }
-    progressEl.textContent = "Đã xóa log.";
-  });
-
-  function applyStored(data) {
-    if (typeof data["dfcode.draft"] === "string" && document.activeElement !== codesEl) {
-      codesEl.value = data["dfcode.draft"];
-    }
-    if ((typeof data["dfcode.gap"] === "string" || typeof data["dfcode.gap"] === "number") && document.activeElement !== gapEl) {
-      gapEl.value = String(DFParse.clampGap(data["dfcode.gap"]));
-    }
-    if (typeof data["dfcode.random"] === "boolean" && document.activeElement !== randomEl) {
-      randomEl.checked = data["dfcode.random"];
-    }
-    if (typeof data["dfcode.skipLogged"] === "boolean") skipEl.checked = data["dfcode.skipLogged"];
-    else if (typeof data["dfcode.skipOk"] === "boolean") skipEl.checked = data["dfcode.skipOk"];
-    if (typeof data["dfcode.protect"] === "boolean" && document.activeElement !== protectEl) {
-      protectEl.checked = data["dfcode.protect"];
-    }
-    if (Array.isArray(data["dfcode.log"])) renderLog(data["dfcode.log"]);
-    if (data["dfcode.meta"]) {
-      var meta = data["dfcode.meta"] || {};
-      if (meta.account || meta.page) {
-        meta = { gapSec: meta.gapSec };
-        if (extension) chrome.storage.local.set({ "dfcode.meta": meta });
+    try {
+      const incoming = P.parseLog(await readTextFile(file));
+      if (!incoming.length) {
+        flash("File không có log code. Cần file đã xuất từ tiện ích này.", "bad");
+        return;
       }
-      metaCache = meta;
+      const merged = P.mergeLogs(model.log, incoming);
+      const added = Math.max(0, merged.length - model.log.length);
+      await storageSet({ [K.log]: merged });
+      if (!hasChrome) apply({ [K.log]: merged });
+      flash("Đã đọc " + incoming.length + " dòng log, thêm " + added + " dòng mới. Lần chạy sau bỏ qua code đã nhập và code lỗi.", "ok");
+    } catch (e) {
+      flash("Không đọc được file log.", "bad");
     }
-    if (data["dfcode.run"]) renderRun(data["dfcode.run"]);
-    if (typeof data["dfcode.restUntil"] === "number") showRest(data["dfcode.restUntil"]);
-    if (!runActive) renderCount();
-  }
+  });
 
-  renderCount();
-  if (!extension) {
-    setStatus("Bản xem trước. Cài tiện ích, mở trang đổi code, rồi bấm Bắt đầu ở đó.", "");
-    startBtn.disabled = true;
-    stopBtn.disabled = true;
-    return;
-  }
+  el.clearLog.addEventListener("click", async function () {
+    if (!model.log.length) return;
+    if (runActive()) {
+      flash("Dừng chạy trước khi xóa log.", "warn");
+      return;
+    }
+    if (!(await ask("Xóa toàn bộ log trên tiện ích này? Hạn mức đã dùng vẫn được giữ.", "Xóa log"))) return;
+    await storageSet({ [K.log]: [], [K.meta]: {}, [K.run]: { phase: "idle" } });
+    if (hasChrome) {
+      chrome.runtime.sendMessage({ kind: "badge", text: "" }, function () { void chrome.runtime.lastError; });
+    } else {
+      apply({ [K.log]: [], [K.run]: null });
+    }
+    flash("Đã xóa log.");
+  });
 
-  chrome.storage.local.get(
-    ["dfcode.draft", "dfcode.gap", "dfcode.random", "dfcode.skipLogged", "dfcode.skipOk", "dfcode.protect", "dfcode.log", "dfcode.meta", "dfcode.run", "dfcode.restUntil"],
-    function (data) {
-      applyStored(data || {});
-      if (!data || !Array.isArray(data["dfcode.log"])) renderLog([]);
-      var run = data && data["dfcode.run"];
-      var active = run && (run.phase === "running" || run.phase === "waiting");
-      if (!active) chrome.runtime.sendMessage({ kind: "badge", text: "" });
-    },
-  );
-  chrome.storage.onChanged.addListener(function (changes, area) {
-    if (area !== "local") return;
-    var patch = {};
-    Object.keys(changes).forEach(function (key) {
-      patch[key] = changes[key].newValue;
+  /* ---------- Khởi động ---------- */
+
+  put(el.ver, VERSION ? "Phiên bản " + VERSION : "Bản xem trước");
+  renderAll();
+
+  setInterval(renderDynamic, 250);
+
+  if (hasChrome) {
+    chrome.storage.local.get(
+      [K.draft, K.gap, K.random, K.skipLogged, K.protect, K.log, K.meta, K.run, K.attempts],
+      function (data) {
+        apply(data || {});
+        renderLog();
+        refreshTab();
+      },
+    );
+    chrome.storage.onChanged.addListener(function (changes, area) {
+      if (area !== "local") return;
+      const patch = {};
+      Object.keys(changes).forEach(function (key) { patch[key] = changes[key].newValue; });
+      apply(patch);
     });
-    applyStored(patch);
-  });
-  refreshTab();
-  pollTimer = setInterval(refreshTab, 2000);
-  window.addEventListener("unload", function () {
-    clearInterval(pollTimer);
-    if (restTimer) clearInterval(restTimer);
-  });
+    setInterval(refreshTab, 2000);
+  }
 })();
