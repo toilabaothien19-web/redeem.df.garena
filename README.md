@@ -199,7 +199,9 @@ Không có địa chỉ máy chủ thứ ba. Nếu bản bạn tải có URL l�
 | [popup.js](popup.js) | popup | Giao diện. Không có lệnh mạng |
 | [demo-codes.js](demo-codes.js) | popup | Danh sách Demo Code, tạo từ [demo-codes.txt](demo-codes.txt) |
 
-`runner.js` bắt tay với `inject.js` qua `MessageChannel` ngay lúc trang bắt đầu tải, trước khi script của trang chạy, và `inject.js` chặn lời chào đó lại. Script khác trên trang không giữ được kênh, nên không ra lệnh nhập hộ và không sửa câu kết quả trên đường về log.
+`runner.js` bắt tay với `inject.js` qua `MessageChannel` ngay lúc trang bắt đầu tải, trước khi script của trang chạy, và `inject.js` chặn lời chào đó lại. Nhờ vậy script khác trên trang không xin được kênh để ra lệnh nhập code, không gửi được lệnh hay kết quả giả qua `window.postMessage`, và không gọi được tiện ích qua `chrome.runtime`.
+
+Giới hạn cần biết: `inject.js` buộc phải chạy chung môi trường JavaScript với trang Garena mới đọc được phản hồi đổi code. Nếu chính trang đó cố tình sửa các hàm có sẵn của trình duyệt, nó có thể làm sai câu kết quả ghi vào log. Nó vẫn không đọc được bộ nhớ của tiện ích, không chạy được mã trong popup và không khiến tiện ích nhập code ngoài danh sách của bạn. Trang đổi code là trang của Garena, nơi vốn đã giữ phiên đăng nhập của bạn, nên trường hợp này chỉ xảy ra khi chính trang Garena bị chiếm.
 
 ## Dành cho người phát triển
 
