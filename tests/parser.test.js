@@ -304,7 +304,7 @@ const SAMPLE = [
 ];
 
 test("xuất log: mỗi code một trạng thái tốt nhất ở phần trên, đủ từng lượt ở phần chi tiết", () => {
-  const text = P.formatLog(SAMPLE, { exportedAt: new Date(NOW).toISOString(), version: "2.0.0", settings: { protect: true } });
+  const text = P.formatLog(SAMPLE, { exportedAt: new Date(NOW).toISOString(), version: "1.0.0", settings: { protect: true } });
   assert.match(text, /=== DÙNG ĐƯỢC \(2\) ===\nDFOK0001\nDFBAD002\n/);
   assert.match(text, /=== LỖI \(0\) ===\n\(không có\)/);
   assert.match(text, /Tổng: 4 lượt, 2 dùng được, 1 lỗi, 1 chưa rõ/);
@@ -328,7 +328,7 @@ test("gộp log nạp từ file không nhân đôi lượt đã có", () => {
   assert.equal(twice.length, 4);
 });
 
-test("đọc được file log của bản 1.9.9, kể cả dòng thiếu giờ", () => {
+test("đọc được file log của bản 0.5.0 beta (1.9.9 cũ), kể cả dòng thiếu giờ", () => {
   const old = [
     "DF Code Garena — nhật ký đổi code",
     "Xuất lúc: 14:00:00 19/11/2026",

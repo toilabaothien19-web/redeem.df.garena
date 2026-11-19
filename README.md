@@ -6,7 +6,9 @@
 
 Tiện ích Chrome / Edge để nhập danh sách code Delta Force trên trang đổi quà chính thức của Garena. Mã nguồn để công khai, không qua bước build: file bạn đọc trên GitHub là file được cài vào trình duyệt.
 
-Phiên bản hiện tại: **2.0.0** · [Nhật ký thay đổi](CHANGELOG.md)
+Phiên bản hiện tại: **1.0.0** · [Nhật ký thay đổi](CHANGELOG.md)
+
+Bản trước khi viết lại (trước đây đánh số 1.9.9) nay là **0.5.0 beta**, vẫn có trên [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) để đối chiếu. Nên dùng 1.0.0.
 
 Trang đổi code: https://redeem.df.garena.sg/vi/cdkgarena.html
 
@@ -40,14 +42,14 @@ Tiện ích vẫn là công cụ nhập tự động trên tài khoản bạn đ
 
 Cần Chrome hoặc Edge từ phiên bản 111. Không dùng được trên Chrome điện thoại.
 
-1. Tải `df-code-garena-2.0.0.zip` từ [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) của kho này. Không cài file đính kèm trong bài viết lạ, nhóm chat, hoặc kho fork chưa đối chiếu.
+1. Tải `df-code-garena-1.0.0.zip` từ [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) của kho này. Không cài file đính kèm trong bài viết lạ, nhóm chat, hoặc kho fork chưa đối chiếu.
 2. Đối chiếu hash như mục [Tự kiểm tra an toàn](#tự-kiểm-tra-an-toàn). Hash lệch thì xóa và không dùng.
 3. Nếu máy đã có thư mục bản cũ, xóa thư mục đó. Không giải nén đè.
 4. Giải nén. Bên trong là thư mục `df-code-garena`. Tên file zip có số phiên bản, tên thư mục thì giữ nguyên.
 5. Mở `chrome://extensions` hoặc `edge://extensions`, bật **Chế độ dành cho nhà phát triển**.
 6. Bấm **Tải tiện ích đã giải nén** và chọn cả thư mục `df-code-garena`.
 
-Nâng cấp từ bản cũ: xóa thư mục cũ, giải nén bản mới vào đúng chỗ đó, rồi bấm nút tải lại trên thẻ tiện ích. Log, danh sách và hạn mức đã dùng vẫn giữ nguyên. Trang đổi code đang mở thì bấm F5.
+Nâng cấp từ bản cũ (0.5.0 beta, hay 1.9.9 theo số cũ): xóa thư mục cũ, giải nén bản mới vào đúng chỗ đó, rồi bấm nút tải lại trên thẻ tiện ích. Log, danh sách và hạn mức đã dùng vẫn giữ nguyên. Trang đổi code đang mở thì bấm F5.
 
 Cũng có thể tải mã nguồn (Code → Download ZIP hoặc `git clone`) rồi chọn thư mục gốc của kho khi bấm **Tải tiện ích đã giải nén**. Thư mục `tests` và `tools` không ảnh hưởng gì tới tiện ích.
 
@@ -98,7 +100,7 @@ Hạn mức được đếm theo từng lần thật sự bấm Đổi, nằm tr
 - **Dùng được**: code đổi thành công. **Lỗi**: trang báo lỗi. **Chưa rõ**: không đọc được kết quả, hoặc code chưa được gửi; dòng chưa rõ không bị bỏ qua lần sau.
 - Lọc theo từng loại. **Chép mã lỗi** copy đúng dòng đó.
 - **Xuất log** ra file `.txt`: phần DÙNG ĐƯỢC, phần LỖI, rồi CHI TIẾT từng lượt. Đọc file trước khi chia sẻ.
-- **Tải log lên** để gộp file log cũ (của bản này hoặc 1.x). Lần chạy sau bỏ qua code đã thành công và code lỗi.
+- **Tải log lên** để gộp file log cũ (của bản này, hoặc của 0.5.0 beta / 1.9.9 cũ). Lần chạy sau bỏ qua code đã thành công và code lỗi.
 
 ## Tự kiểm tra an toàn
 
@@ -114,11 +116,11 @@ File `SHA256SUMS` nằm **trong** zip chỉ chứng minh các file khớp với 
 Hash của file zip:
 
 ```bash
-sha256sum df-code-garena-2.0.0.zip
+sha256sum df-code-garena-1.0.0.zip
 ```
 
 ```powershell
-(Get-FileHash -Algorithm SHA256 .\df-code-garena-2.0.0.zip).Hash.ToLower()
+(Get-FileHash -Algorithm SHA256 .\df-code-garena-1.0.0.zip).Hash.ToLower()
 ```
 
 Hash từng file, đứng trong thư mục `df-code-garena` vừa giải nén:
@@ -211,7 +213,7 @@ Ra phiên bản mới:
 
 1. Đổi `version` trong `manifest.json`, thêm mục mới vào đầu `CHANGELOG.md`, đổi số phiên bản trong README.
 2. Chạy `node tools/pack.mjs`, rồi commit cả `SHA256SUMS` và `demo-codes.js`.
-3. Đẩy tag `v<phiên bản>` (ví dụ `v2.0.0`). GitHub Actions chạy test, đóng gói và đăng file zip kèm hash lên Releases.
+3. Đẩy tag `v<phiên bản>` (ví dụ `v1.0.0`; số 0.x được đăng dạng beta). GitHub Actions chạy test, đóng gói và đăng file zip kèm hash lên Releases.
 
 ## Giới hạn
 

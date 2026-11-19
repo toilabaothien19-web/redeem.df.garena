@@ -1,4 +1,4 @@
-DF Code Garena 2.0.0
+DF Code Garena 1.0.0
 ====================
 
 Tiện ích chỉ nhập code khi tab Trung Tâm Đổi Quà đang mở:

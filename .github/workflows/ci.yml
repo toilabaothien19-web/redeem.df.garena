@@ -23,7 +23,7 @@ jobs:
         run: node tools/pack.mjs --check
 
   release:
-    # Đẩy tag v<phiên bản> (vd. v2.0.0) thì đóng gói và đăng file zip kèm hash lên Releases.
+    # Đẩy tag v<phiên bản> (vd. v1.0.0). Phiên bản 0.x được đăng dạng pre-release (beta) thì đóng gói và đăng file zip kèm hash lên Releases.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: test
     runs-on: ubuntu-latest
@@ -44,9 +44,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          flags=""
+          title="DF Code Garena ${GITHUB_REF_NAME#v}"
+          case "$GITHUB_REF_NAME" in v0.*) flags="--prerelease"; title="$title beta" ;; esac
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" dist/*.zip dist/*.zip.sha256 --clobber
           else
-            gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*.zip.sha256 \
-              --title "DF Code Garena ${GITHUB_REF_NAME#v}" --notes-file dist/RELEASE.md
+            gh release create "$GITHUB_REF_NAME" dist/*.zip dist/*.zip.sha256 $flags \
+              --title "$title" --notes-file dist/RELEASE.md
           fi

@@ -715,7 +715,7 @@
 
   const DETAIL_RE = /^\[(OK|LỖI|LOI|ERROR|CHƯA|CHUA)\]\s*(.*?)\s{2,}([A-Za-z0-9_-]{4,80})\s+[—-](?:\s+(.*))?$/i;
 
-  /* Đọc file log đã xuất (bản 1.x và 2.x). Phần CHI TIẾT giữ đủ từng lượt; code chỉ có ở phần trên được thêm sau. */
+  /* Đọc file log đã xuất (bản 1.0.0 trở lên và bản 0.5.0 beta, tức 1.9.9 cũ). Phần CHI TIẾT giữ đủ từng lượt; code chỉ có ở phần trên được thêm sau. */
   function parseLog(text) {
     let raw = String(text == null ? "" : text).replace(/^﻿/, "");
     if (raw.length > LIMITS.maxText) raw = raw.slice(0, LIMITS.maxText);
