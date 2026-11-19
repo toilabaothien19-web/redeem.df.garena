@@ -8,7 +8,7 @@ Tiện ích Chrome / Edge để nhập danh sách code Delta Force trên trang �
 
 Phiên bản hiện tại: **1.0.0** · [Nhật ký thay đổi](CHANGELOG.md)
 
-Bản trước khi viết lại (trước đây đánh số 1.9.9) nay là **0.5.0 beta**, vẫn có trên [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) để đối chiếu. Nên dùng 1.0.0.
+Bản trước khi viết lại (trước đây đánh số 1.9.9) được đánh số lại thành **0.5.0 beta** và chỉ giữ trong lịch sử mã (tag `v0.5.0`, commit `83f3cfb`) để đối chiếu, không phát hành file zip. Hãy dùng 1.0.0.
 
 Trang đổi code: https://redeem.df.garena.sg/vi/cdkgarena.html
 
@@ -49,7 +49,7 @@ Cần Chrome hoặc Edge từ phiên bản 111. Không dùng được trên Chro
 5. Mở `chrome://extensions` hoặc `edge://extensions`, bật **Chế độ dành cho nhà phát triển**.
 6. Bấm **Tải tiện ích đã giải nén** và chọn cả thư mục `df-code-garena`.
 
-Nâng cấp từ bản cũ (0.5.0 beta, hay 1.9.9 theo số cũ): xóa thư mục cũ, giải nén bản mới vào đúng chỗ đó, rồi bấm nút tải lại trên thẻ tiện ích. Log, danh sách và hạn mức đã dùng vẫn giữ nguyên. Trang đổi code đang mở thì bấm F5.
+Nâng cấp từ bản cũ (0.5.0 beta, hay 1.9.9 theo số cũ): xóa thư mục cũ, giải nén bản mới vào đúng chỗ đó, rồi **bấm nút tải lại trên thẻ tiện ích** trong `chrome://extensions`. Chỉ khởi động lại trình duyệt thì chưa đủ: Chrome vẫn chạy service worker của bản cũ. Log, danh sách và hạn mức đã dùng vẫn giữ nguyên. Trang đổi code đang mở thì bấm F5.
 
 Cũng có thể tải mã nguồn (Code → Download ZIP hoặc `git clone`) rồi chọn thư mục gốc của kho khi bấm **Tải tiện ích đã giải nén**. Thư mục `tests` và `tools` không ảnh hưởng gì tới tiện ích.
 

@@ -12,7 +12,9 @@ Cài trên máy tính (Chrome hoặc Edge 111 trở lên)
 3. Giải nén file zip. Chọn cả thư mục df-code-garena, không chọn từng file bên trong.
 4. Mở chrome://extensions hoặc edge://extensions, bật Chế độ dành cho nhà phát triển.
 5. Bấm Tải tiện ích đã giải nén (Load unpacked) và chọn thư mục df-code-garena.
-6. Muốn kiểm từng file: đứng trong thư mục df-code-garena, chạy "sha256sum -c SHA256SUMS".
+6. Nâng cấp từ bản cũ: xóa thư mục cũ, giải nén bản mới vào đúng chỗ đó, rồi bấm nút tải lại
+   trên thẻ tiện ích ở chrome://extensions. Chỉ khởi động lại trình duyệt thì Chrome vẫn chạy phần nền của bản cũ.
+7. Muốn kiểm từng file: đứng trong thư mục df-code-garena, chạy "sha256sum -c SHA256SUMS".
    File SHA256SUMS trong zip chỉ chứng minh các file khớp nhau; hãy so nó với file SHA256SUMS trên GitHub.
 
 Dùng
