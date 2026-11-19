@@ -2,6 +2,22 @@
 
 Từ bản 1.0.0, số phiên bản được đánh lại. Mã trước khi viết lại, trước đây đánh số 1.9.9, nay là **0.5.0 beta**. Các mốc cũ 1.0 đến 1.9.9 vẫn giữ ở cuối file với số cũ, chỉ để tra cứu.
 
+## 1.0.2
+
+Tập trung vào log: xóa, xuất, nạp và đối chiếu code.
+
+- Lỗi tạm thời (HTTP 403/429/5xx, "thử lại sau", "thao tác quá nhiều lần", lỗi mạng, cần xác minh) ghi là **chưa rõ** thay vì **lỗi**. Trước đây code gặp lỗi kiểu này bị bỏ qua vĩnh viễn dù máy chủ chưa hề xét nó. Một lỗi máy chủ lẻ thì nhập tiếp code sau; hai lỗi liên tiếp, 403 hoặc 429 thì vẫn dừng như cũ.
+- Trang trả lỗi HTTP mà nội dung không đọc được (vd 502) vẫn ghi lại mã HTTP.
+- Log lưu từ bản trước được sửa khi cập nhật: lỗi tạm thời đổi thành chưa rõ. File log cũ khi nạp cũng được tính lại như vậy.
+- Log giữ tối đa 5000 lượt (trước là 2000). Khi đầy, bỏ trước lượt cũ đã có lượt mới hơn của cùng code, rồi tới lượt chưa rõ, nên không mất thông tin bỏ qua code.
+- Nạp file log cũ không còn đẩy mất lượt mới đang có: log được sắp lại theo giờ trước khi cắt. Giờ trong file được đọc thành mốc thời gian thật, cả định dạng của 0.5.0 beta.
+- Nhận file log tới 2 MB (trước 200 KB). File xuất từ log 2000 lượt nặng gần 400 KB nên trước đây không nạp lại được.
+- File log xuất ra có thêm phần CHƯA RÕ, liệt kê code sẽ nhập lại.
+- Popup ghi rõ bỏ qua bao nhiêu code đã có trong log (bao nhiêu dùng được, bao nhiêu lỗi). Sau khi nạp log thì báo kết quả đối chiếu với danh sách hiện tại.
+- Hộp xác nhận Xóa log nói rõ code sẽ không còn được bỏ qua và nhắc xuất log trước.
+- Ngày giờ vô lý trong file log (vd 32/13) bị bỏ qua thay vì bị đổi thành một ngày khác.
+- README nói đúng giới hạn: script trên chính trang Garena, nếu cố tình sửa hàm có sẵn của trình duyệt, có thể làm sai câu kết quả ghi vào log.
+
 ## 1.0.1
 
 - Log ghi đủ câu trên trang cả khi hộp thoại của Garena hiện chậm hơn phản hồi máy chủ. Trước đây có lần chỉ ghi câu của máy chủ, ví dụ `The current cdkey has reached the redemption limit | 400068` thay vì `error_hint_400068 | The current cdkey has reached the redemption limit`; với code thành công có thể chỉ ghi số `0`. Giờ có phản hồi mà chưa thấy hộp thoại thì chờ thêm tối đa 2,5 giây.

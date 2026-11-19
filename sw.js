@@ -19,13 +19,25 @@ function clearBadge() {
   chrome.action.setBadgeText({ text: "" });
 }
 
+/* Log lưu từ bản trước: lỗi tạm thời (429, 5xx, "thử lại sau"…) từng bị ghi là "lỗi" nên bị bỏ qua vĩnh viễn.
+ * Đổi chúng thành "chưa rõ" và cắt log theo cách mới. Chỉ làm khi không có phiên đang chạy. */
+async function migrateLog(log) {
+  if (!Array.isArray(log) || !log.length) return;
+  const fixed = P.capLog(log.map(P.normalizeEntry).filter(Boolean), P.LIMITS.logCap);
+  const changed = fixed.length !== log.length || fixed.some(function (e, i) {
+    return !log[i] || e.code !== log[i].code || e.status !== log[i].status || e.at !== (log[i].at || "");
+  });
+  if (changed) await chrome.storage.local.set({ [K.log]: fixed });
+}
+
 async function settle() {
-  const data = await chrome.storage.local.get([K.run].concat(P.LEGACY_KEYS));
+  const data = await chrome.storage.local.get([K.run, K.log].concat(P.LEGACY_KEYS));
   const run = data[K.run];
   const legacy = P.LEGACY_KEYS.filter(function (key) { return key in data; });
   if (legacy.length) await chrome.storage.local.remove(legacy);
   if (P.isRunActive(run, Date.now())) return;
   clearBadge();
+  await migrateLog(data[K.log]);
   if (run && (run.phase === "running" || run.phase === "waiting")) {
     await chrome.storage.local.set({
       [K.run]: Object.assign({}, run, {

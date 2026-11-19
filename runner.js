@@ -63,8 +63,8 @@
     const data = await get([K.log]);
     const log = Array.isArray(data[K.log]) ? data[K.log].slice() : [];
     log.push(entry);
-    if (log.length > P.LIMITS.logCap) log.splice(0, log.length - P.LIMITS.logCap);
-    await set({ [K.log]: log });
+    /* Đầy thì bỏ lượt cũ đã có lượt khác thay thế trước, để không mất thông tin bỏ qua code. */
+    await set({ [K.log]: P.capLog(log, P.LIMITS.logCap) });
   }
 
   function badge(text, tone) {
@@ -94,8 +94,8 @@
   }
 
   /* ---------- Kênh riêng với inject.js ----------
-   * Bắt tay ngay lúc tải trang, trước khi script của trang chạy. Chỉ inject.js giữ đầu kia của kênh,
-   * nên script khác trên trang không ra lệnh nhập hộ và không sửa được kết quả. */
+   * Bắt tay ngay lúc tải trang, trước khi script của trang chạy, nên script khác trên trang không xin được kênh
+   * để ra lệnh nhập code. Kết quả từ trang vẫn coi là dữ liệu không tin cậy: chỉ được làm sạch rồi ghi thành chữ. */
 
   let pagePort = null;
   let linking = null;

@@ -15,7 +15,7 @@
   [
     "ver", "status", "statusBox", "statusAction", "codes", "count", "parseNote", "pick", "demo", "clearCodes", "file",
     "protect", "protectInfo", "freePace", "randomGap", "gapBlock", "gap", "gapValue", "skipLogged",
-    "statTotal", "statFresh", "statQueue", "quota", "eta", "start", "stop", "progressBox", "barWrap", "bar", "runTally",
+    "statTotal", "statFresh", "statQueue", "skipNote", "quota", "eta", "start", "stop", "progressBox", "barWrap", "bar", "runTally",
     "progress", "logCount", "fAll", "fOk", "fError", "fUnknown", "log", "logMore", "export", "importLog", "clearLog",
     "logFile", "ask", "askText", "askYes", "askNo",
   ].forEach(function (id) { el[id] = $(id); });
@@ -186,6 +186,26 @@
     return analysisCache.value;
   }
 
+  let overlapCache = { log: null, codes: null, value: null };
+  function overlapNow(codes) {
+    if (overlapCache.log !== model.log || overlapCache.codes !== codes) {
+      overlapCache = { log: model.log, codes: codes, value: P.overlap(codes, model.log) };
+    }
+    return overlapCache.value;
+  }
+
+  function describeOverlap(ov, skipLogged) {
+    const done = ov.ok + ov.error;
+    const parts = [];
+    if (ov.ok) parts.push(ov.ok + " dùng được");
+    if (ov.error) parts.push(ov.error + " lỗi");
+    let text = "";
+    if (done && skipLogged) text = "Bỏ qua " + done + " code đã có trong log: " + parts.join(", ") + ".";
+    else if (done) text = "Đã tắt bỏ qua: " + done + " code đã có trong log (" + parts.join(", ") + ") sẽ được nhập lại.";
+    if (ov.unknown) text += (text ? " " : "") + ov.unknown + " code từng ghi chưa rõ sẽ được nhập lại.";
+    return text;
+  }
+
   function runActive(now) {
     return P.isRunActive(model.run, now || Date.now());
   }
@@ -265,6 +285,7 @@
 
     tickStat(el.statTotal, a.codes.length);
     tickStat(el.statFresh, pl.fresh);
+    put(el.skipNote, describeOverlap(overlapNow(a.codes), s.skipLogged));
     tickStat(el.statQueue, active ? Math.max(0, (model.run.total || 0) - (model.run.index || 0)) : room);
 
     const q = pl.quota;
@@ -661,8 +682,8 @@
       flash("Dừng chạy trước khi nạp log.", "warn");
       return;
     }
-    if (file.size > P.LIMITS.maxFileBytes) {
-      flash("File quá lớn. Chỉ nhận file .txt dưới 200 KB.", "bad");
+    if (file.size > P.LIMITS.maxLogFileBytes) {
+      flash("File quá lớn. Chỉ nhận file log dưới 2 MB.", "bad");
       return;
     }
     try {
@@ -671,11 +692,17 @@
         flash("File không có log code. Cần file đã xuất từ tiện ích này.", "bad");
         return;
       }
+      const keyOf = function (e) { return e.code + "|" + e.status + "|" + P.entryTime(e); };
+      const known = new Set(model.log.map(P.normalizeEntry).filter(Boolean).map(keyOf));
+      const added = new Set(incoming.map(keyOf).filter(function (k) { return !known.has(k); })).size;
       const merged = P.mergeLogs(model.log, incoming);
-      const added = Math.max(0, merged.length - model.log.length);
       await storageSet({ [K.log]: merged });
       if (!hasChrome) apply({ [K.log]: merged });
-      flash("Đã đọc " + incoming.length + " dòng log, thêm " + added + " dòng mới. Lần chạy sau bỏ qua code đã nhập và code lỗi.", "ok");
+      const codes = analysis().codes;
+      const ov = P.overlap(codes, merged);
+      let text = "Đã đọc " + incoming.length + " lượt từ file, thêm " + added + " lượt mới.";
+      if (codes.length) text += " Đối chiếu danh sách hiện tại: " + (ov.ok + ov.error) + " code đã có trong log, " + (ov.fresh + ov.unknown) + " code sẽ nhập.";
+      flash(text, "ok");
     } catch (e) {
       flash("Không đọc được file log.", "bad");
     }
@@ -687,7 +714,12 @@
       flash("Dừng chạy trước khi xóa log.", "warn");
       return;
     }
-    if (!(await ask("Xóa toàn bộ log trên tiện ích này? Hạn mức đã dùng vẫn được giữ.", "Xóa log"))) return;
+    const sure = await ask(
+      "Xóa toàn bộ " + model.log.length + " lượt trong log? Sau khi xóa, các code này không còn được bỏ qua khi chạy lại."
+        + " Hạn mức đã dùng vẫn được giữ. Muốn giữ lại thì bấm Hủy rồi Xuất log trước.",
+      "Xóa log",
+    );
+    if (!sure) return;
     await storageSet({ [K.log]: [], [K.meta]: {}, [K.run]: { phase: "idle" } });
     if (hasChrome) {
       chrome.runtime.sendMessage({ kind: "badge", text: "" }, function () { void chrome.runtime.lastError; });

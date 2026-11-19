@@ -137,6 +137,11 @@
     }
     const parsed = parsePayload(text);
     if (!parsed || (parsed.code == null && !parsed.msg)) {
+      /* Trang trả lỗi HTTP (vd 502) mà nội dung không đọc được: vẫn ghi mã HTTP để biết đây là lỗi tạm thời. */
+      if (typeof httpStatus === "number" && httpStatus >= 400 && (verdict === "ours" || pending.seen < 2)) {
+        pending.raw = { httpStatus: httpStatus };
+        return;
+      }
       if (pending.seen >= 2) pending.ambiguous = true;
       return;
     }

@@ -42,7 +42,10 @@
     maxCodes: 1000,
     maxText: 200000,
     maxFileBytes: 200 * 1024,
-    logCap: 2000,
+    /* File log xuất ra có thể lớn (5000 lượt ~ 1 MB), nên file log được nhận lớn hơn file danh sách code. */
+    maxLogFileBytes: 2 * 1024 * 1024,
+    maxLogText: 2200000,
+    logCap: 5000,
     detailCap: 500,
     /* Phiên "đang chạy" không cập nhật quá lâu thì coi như đã chết (tab đóng, trình duyệt tắt). */
     staleMs: 150 * SECOND,
@@ -183,7 +186,7 @@
   function analyzeCodes(text) {
     let raw = String(text == null ? "" : text);
     if (raw.length > LIMITS.maxText) raw = raw.slice(0, LIMITS.maxText);
-    raw = raw.replace(/[​-‍⁠﻿]/g, "");
+    raw = raw.replace(/[\u200B-\u200D\u2060\uFEFF]/g, "");
     const seen = new Set();
     const codes = [];
     let duplicates = 0;
@@ -501,6 +504,23 @@
     return /captcha|recaptcha|hcaptcha|geetest|too many requests|rate limit|try again later|too frequent|操作过于频繁|操作频繁|请求过于频繁|频繁|风控|验证码|封禁|冻结|账号异常|banned|suspended|account (?:ban|locked|restrict)|bị khóa|bi khoa|phong tỏa|phong toa|tài khoản bị|tai khoan bi|quá nhiều lần|qua nhieu lan|thử lại sau|thu lai sau|giới hạn truy cập|gioi han truy cap|xác minh|xac minh/i.test(value);
   }
 
+  /* Lỗi tạm thời: máy chủ chưa xét code (quá tải, giới hạn tần suất, lỗi mạng, cần xác minh…).
+   * Code gặp lỗi kiểu này ghi "chưa rõ" để lần sau còn nhập lại, không bị bỏ qua vĩnh viễn. */
+  function isTransientHttp(http) {
+    const n = Number(http) || 0;
+    return n === 403 || n === 408 || n === 425 || n === 429 || (n >= 500 && n < 600);
+  }
+
+  const TRANSIENT_TEXT = /lỗi mạng|loi mang|mất kết nối|mat ket noi|network error|network is|timed? ?out|hết thời gian chờ|het thoi gian cho|hệ thống bận|he thong ban|system (?:is )?busy|server (?:error|busy)|service unavailable|bad gateway|gateway time/i;
+  /* Mã HTTP lỗi tạm thời nằm cuối câu log, vd "Too Many Requests | 429" (mã của Garena có 6 chữ số). */
+  const TRANSIENT_CODE_SUFFIX = /\| (?:403|408|425|429|5\d\d)$/;
+
+  function looksTransient(text) {
+    const value = squash(text);
+    if (!value) return false;
+    return isAccountRisk(value) || TRANSIENT_TEXT.test(value) || TRANSIENT_CODE_SUFFIX.test(value);
+  }
+
   /* Mã số và câu chữ mâu thuẫn nhau thì ghi "chưa xác định", không đoán. */
   function describeApi(raw) {
     if (!raw || typeof raw !== "object") return { ok: false, status: "unknown", serverCode: null, detail: "", httpStatus: 0 };
@@ -570,6 +590,9 @@
       status = "unknown";
       detail = (sanitizeText(r.text) || "Không thao tác được trên trang.") + " Code này chưa được gửi.";
     }
+    const http = r.source === "api" && r.raw ? Number(r.raw.httpStatus) || 0 : 0;
+    if (status === "error" && (isTransientHttp(http) || looksTransient(detail))) status = "unknown";
+    if (!detail && isTransientHttp(http)) detail = "Trang trả mã HTTP " + http + ".";
     if (!detail) detail = status === "unknown" ? UNKNOWN_TEXT : status === "ok" ? "Thành công." : "Không rõ câu lỗi.";
     return {
       id: randomId(),
@@ -599,6 +622,8 @@
     if (isAccountRisk(said)) {
       return { action: "stop", note: "Đã dừng để bảo vệ tài khoản. Trang báo: " + sentence(said.slice(0, 180)) };
     }
+    /* Một lỗi máy chủ (5xx) lẻ: code ghi "chưa rõ", nhập tiếp code sau. Hai lỗi liên tiếp thì đã dừng ở trên. */
+    if (c.http5xx === 1) return { action: "continue" };
     if (!entry || entry.status === "unknown") {
       return {
         action: "stop",
@@ -623,19 +648,68 @@
     return status === "ok" || status === "unknown" ? status : "error";
   }
 
+  /* Đọc giờ ghi trong file log: "19/11/2026 14:05:06" (từ 1.0.0) hoặc "14:05:06 19/11/2026" (0.5.0 beta). */
+  function parseTimeText(text) {
+    const value = squash(text);
+    let p = null;
+    let m = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}),? (\d{1,2}):(\d{2}):(\d{2})$/);
+    if (m) p = { y: +m[3], mo: +m[2], d: +m[1], h: +m[4], mi: +m[5], s: +m[6] };
+    m = !p && value.match(/^(\d{1,2}):(\d{2}):(\d{2}),? (\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) p = { y: +m[6], mo: +m[5], d: +m[4], h: +m[1], mi: +m[2], s: +m[3] };
+    if (!p || p.h > 23 || p.mi > 59 || p.s > 59) return "";
+    const date = new Date(p.y, p.mo - 1, p.d, p.h, p.mi, p.s);
+    /* Date tự "tràn" ngày sai (32/13 thành tháng sau), nên kiểm lại từng phần. */
+    if (date.getFullYear() !== p.y || date.getMonth() !== p.mo - 1 || date.getDate() !== p.d) return "";
+    return date.toISOString();
+  }
+
   function normalizeEntry(e) {
     if (!e || typeof e !== "object" || !isCodeToken(e.code)) return null;
-    const status = normStatus(e.status);
+    let status = normStatus(e.status);
+    const detail = squash(e.detail).slice(0, LIMITS.detailCap);
+    /* Log cũ có thể ghi lỗi tạm thời là "lỗi": đổi thành "chưa rõ" để code đó còn được nhập lại. */
+    if (status === "error" && looksTransient(detail)) status = "unknown";
+    const atText = typeof e.atText === "string" ? e.atText.slice(0, 40) : "";
+    let at = typeof e.at === "string" ? e.at.slice(0, 40) : "";
+    if (!at && atText) at = parseTimeText(atText);
     return {
       id: typeof e.id === "string" ? e.id.slice(0, 40) : "",
-      at: typeof e.at === "string" ? e.at.slice(0, 40) : "",
-      atText: typeof e.atText === "string" ? e.atText.slice(0, 40) : "",
+      at: at,
+      atText: at ? "" : atText,
       code: e.code,
       status: status,
-      detail: squash(e.detail).slice(0, LIMITS.detailCap)
-        || (status === "ok" ? "Dùng được (từ log)." : status === "unknown" ? UNKNOWN_TEXT : "Lỗi (từ log)."),
+      detail: detail || (status === "ok" ? "Dùng được (từ log)." : status === "unknown" ? UNKNOWN_TEXT : "Lỗi (từ log)."),
       serverCode: typeof e.serverCode === "number" && Number.isFinite(e.serverCode) ? e.serverCode : null,
     };
+  }
+
+  function timeValue(e) {
+    const t = e && e.at ? Date.parse(e.at) : NaN;
+    return Number.isFinite(t) ? t : -Infinity;
+  }
+
+  /* Giữ log trong giới hạn mà không làm mất thông tin bỏ qua code:
+   * bỏ trước các lượt cũ đã có lượt khác thay thế, rồi tới lượt "chưa rõ", cuối cùng mới tới lượt cũ nhất. */
+  function capLog(entries, cap) {
+    const list = Array.isArray(entries) ? entries.filter(Boolean) : [];
+    const limit = cap || LIMITS.logCap;
+    if (list.length <= limit) return list;
+    const best = bestByCode(list);
+    const drop = new Set();
+    let excess = list.length - limit;
+    const passes = [
+      function (e) { return best.get(e.code) !== e; },
+      function (e) { return normStatus(e.status) === "unknown"; },
+      function () { return true; },
+    ];
+    for (let p = 0; p < passes.length && excess > 0; p++) {
+      for (let i = 0; i < list.length && excess > 0; i++) {
+        if (drop.has(i) || !passes[p](list[i])) continue;
+        drop.add(i);
+        excess--;
+      }
+    }
+    return list.filter(function (e, i) { return !drop.has(i); });
   }
 
   function entryTime(e) {
@@ -667,15 +741,31 @@
     return map;
   }
 
+  /* Đối chiếu danh sách code với log: mỗi code theo trạng thái tốt nhất trong log, hoặc chưa có. */
+  function overlap(codes, log) {
+    const best = bestByCode(log);
+    const out = { ok: 0, error: 0, unknown: 0, fresh: 0 };
+    const list = Array.isArray(codes) ? codes : [];
+    for (let i = 0; i < list.length; i++) {
+      const e = best.get(list[i]);
+      if (!e) out.fresh++;
+      else out[normStatus(e.status)]++;
+    }
+    return out;
+  }
+
   function formatLog(entries, meta) {
     const list = Array.isArray(entries) ? entries.filter(Boolean) : [];
     const info = meta || {};
     const best = bestByCode(list);
     const ok = [];
     const bad = [];
+    const wait = [];
     best.forEach(function (e) {
-      if (normStatus(e.status) === "ok") ok.push(e);
-      else if (normStatus(e.status) === "error") bad.push(e);
+      const st = normStatus(e.status);
+      if (st === "ok") ok.push(e);
+      else if (st === "error") bad.push(e);
+      else wait.push(e);
     });
     const count = tally(list);
     const lines = [];
@@ -693,6 +783,10 @@
     if (!bad.length) lines.push("(không có)");
     for (let b = 0; b < bad.length; b++) lines.push(bad[b].code + "\t" + sanitizeText(bad[b].detail));
     lines.push("");
+    lines.push("=== CHƯA RÕ (" + wait.length + ") — sẽ nhập lại ở lần chạy sau ===");
+    if (!wait.length) lines.push("(không có)");
+    for (let w = 0; w < wait.length; w++) lines.push(wait[w].code + "\t" + sanitizeText(wait[w].detail));
+    lines.push("");
     lines.push("=== CHI TIẾT ===");
     if (!list.length) lines.push("(chưa có lượt nhập nào)");
     for (let n = 0; n < list.length; n++) {
@@ -709,6 +803,7 @@
     if (/^===\s*(?:DÙNG ĐƯỢC|DUNG DUOC)/i.test(line)) return "ok";
     if (/^===\s*(?:LỖI|LOI)/i.test(line)) return "error";
     if (/^===\s*(?:CHI TIẾT|CHI TIET)/i.test(line)) return "detail";
+    if (/^===\s*(?:CHƯA RÕ|CHUA RO)/i.test(line)) return "unknown";
     if (/^===/.test(line)) return "other";
     return "";
   }
@@ -717,8 +812,8 @@
 
   /* Đọc file log đã xuất (bản 1.0.0 trở lên và bản 0.5.0 beta, tức 1.9.9 cũ). Phần CHI TIẾT giữ đủ từng lượt; code chỉ có ở phần trên được thêm sau. */
   function parseLog(text) {
-    let raw = String(text == null ? "" : text).replace(/^﻿/, "");
-    if (raw.length > LIMITS.maxText) raw = raw.slice(0, LIMITS.maxText);
+    let raw = String(text == null ? "" : text).replace(/^\uFEFF/, "");
+    if (raw.length > LIMITS.maxLogText) raw = raw.slice(0, LIMITS.maxLogText);
     const lines = raw.split(/\r\n|\r|\n/);
     let section = "";
     const fromDetail = [];
@@ -745,10 +840,10 @@
         });
       } else if (section === "ok") {
         if (isCodeToken(line)) fromSections.push({ code: line, status: "ok", detail: "Dùng được (từ log)." });
-      } else if (section === "error") {
+      } else if (section === "error" || section === "unknown") {
         const bits = line.indexOf("\t") === -1 ? line.split(/\s{2,}/) : line.split("\t");
         const code = bits[0].trim();
-        if (isCodeToken(code)) fromSections.push({ code: code, status: "error", detail: bits.slice(1).join(" ") || "Lỗi (từ log)." });
+        if (isCodeToken(code)) fromSections.push({ code: code, status: section, detail: bits.slice(1).join(" ") });
       }
     }
     const out = [];
@@ -768,9 +863,9 @@
     return out;
   }
 
-  /* Gộp log đang có với log nạp từ file. Không thêm lại lượt đã có (cùng code, trạng thái và giờ). */
+  /* Gộp log đang có với log nạp từ file. Không thêm lại lượt đã có (cùng code, trạng thái và giờ).
+   * Sắp lại theo giờ để lượt cũ trong file không đẩy mất lượt mới đang có khi log chạm giới hạn. */
   function mergeLogs(current, incoming, cap) {
-    const limit = cap || LIMITS.logCap;
     const out = [];
     const keys = new Set();
     const lists = [current, incoming];
@@ -785,7 +880,9 @@
         out.push(e);
       }
     }
-    return out.length > limit ? out.slice(out.length - limit) : out;
+    const order = out.map(function (e, i) { return { e: e, i: i, t: timeValue(e) }; });
+    order.sort(function (a, b) { return a.t === b.t ? a.i - b.i : a.t < b.t ? -1 : 1; });
+    return capLog(order.map(function (o) { return o.e; }), cap);
   }
 
   /* ---------- Trạng thái chạy ---------- */
@@ -818,6 +915,10 @@
     UNKNOWN_TEXT: UNKNOWN_TEXT,
     squash: squash,
     sentence: sentence,
+    isTransientHttp: isTransientHttp,
+    looksTransient: looksTransient,
+    parseTimeText: parseTimeText,
+    capLog: capLog,
     sanitizeText: sanitizeText,
     isCodeToken: isCodeToken,
     looksLikeCode: looksLikeCode,
@@ -853,6 +954,7 @@
     entryTime: entryTime,
     tally: tally,
     bestByCode: bestByCode,
+    overlap: overlap,
     formatLog: formatLog,
     parseLog: parseLog,
     mergeLogs: mergeLogs,

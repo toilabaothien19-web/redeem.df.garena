@@ -6,7 +6,7 @@
 
 Tiện ích Chrome / Edge để nhập danh sách code Delta Force trên trang đổi quà chính thức của Garena. Mã nguồn để công khai, không qua bước build: file bạn đọc trên GitHub là file được cài vào trình duyệt.
 
-Phiên bản hiện tại: **1.0.1** · [Nhật ký thay đổi](CHANGELOG.md)
+Phiên bản hiện tại: **1.0.2** · [Nhật ký thay đổi](CHANGELOG.md)
 
 Bản trước khi viết lại (trước đây đánh số 1.9.9) được đánh số lại thành **0.5.0 beta** và chỉ giữ trong lịch sử mã (tag `v0.5.0`, commit `83f3cfb`) để đối chiếu, không phát hành file zip. Hãy dùng bản mới nhất.
 
@@ -46,7 +46,7 @@ Tiện ích vẫn là công cụ nhập tự động trên tài khoản bạn đ
 
 Cần Chrome hoặc Edge từ phiên bản 111. Không dùng được trên Chrome điện thoại.
 
-1. Tải `df-code-garena-1.0.1.zip` từ [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) của kho này. Không cài file đính kèm trong bài viết lạ, nhóm chat, hoặc kho fork chưa đối chiếu.
+1. Tải `df-code-garena-1.0.2.zip` từ [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) của kho này. Không cài file đính kèm trong bài viết lạ, nhóm chat, hoặc kho fork chưa đối chiếu.
 2. Đối chiếu hash như mục [Tự kiểm tra an toàn](#tự-kiểm-tra-an-toàn). Hash lệch thì xóa và không dùng.
 3. Nếu máy đã có thư mục bản cũ, xóa thư mục đó. Không giải nén đè.
 4. Giải nén. Bên trong là thư mục `df-code-garena`. Tên file zip có số phiên bản, tên thư mục thì giữ nguyên.
@@ -101,10 +101,17 @@ Hạn mức được đếm theo từng lần thật sự bấm Đổi, nằm tr
 ### Nhật ký
 
 - Mỗi lần nhập ghi nguyên câu trên trang và câu máy chủ, kèm mã lỗi. Token, email, liên kết và dãy số dài bị ẩn trước khi ghi.
-- **Dùng được**: code đổi thành công. **Lỗi**: trang báo lỗi. **Chưa rõ**: không đọc được kết quả, hoặc code chưa được gửi; dòng chưa rõ không bị bỏ qua lần sau.
+- **Dùng được**: code đổi thành công. **Lỗi**: máy chủ đã xét code và báo lỗi (hết lượt, không hợp lệ…). **Chưa rõ**: không đọc được kết quả, code chưa được gửi, hoặc trang báo lỗi tạm thời (quá nhiều lần, thử lại sau, lỗi mạng, HTTP 403/429/5xx). Code chưa rõ không bị bỏ qua lần sau.
 - Lọc theo từng loại. **Chép mã lỗi** copy đúng dòng đó.
-- **Xuất log** ra file `.txt`: phần DÙNG ĐƯỢC, phần LỖI, rồi CHI TIẾT từng lượt. Đọc file trước khi chia sẻ.
-- **Tải log lên** để gộp file log cũ (của bản này, hoặc của 0.5.0 beta / 1.9.9 cũ). Lần chạy sau bỏ qua code đã thành công và code lỗi.
+- Log giữ tối đa 5000 lượt. Khi đầy, lượt cũ đã có lượt mới hơn của cùng code bị bỏ trước, rồi tới lượt chưa rõ, nên thông tin dùng để bỏ qua code được giữ lâu nhất có thể.
+
+**Đối chiếu với log.** Khi bật "Bỏ qua code đã có trong log", mỗi code trong danh sách được so với log theo kết quả tốt nhất của nó: đã dùng được hoặc đã lỗi thì bỏ qua, chưa rõ hoặc chưa có thì nhập. Ngay dưới ô số liệu, popup ghi rõ bỏ qua bao nhiêu code và vì sao. So khớp phân biệt chữ hoa/thường, để một code gõ sai hoa/thường không chặn code đúng.
+
+**Xuất log** ra file `.txt` gồm các phần DÙNG ĐƯỢC, LỖI, CHƯA RÕ (sẽ nhập lại), rồi CHI TIẾT từng lượt. Đọc file trước khi chia sẻ.
+
+**Tải log lên** để gộp file log đã xuất (của bản này, hoặc của 0.5.0 beta / 1.9.9 cũ), tối đa 2 MB. Lượt trùng không bị thêm lại. Lỗi tạm thời mà bản cũ ghi là "lỗi" được tính lại thành "chưa rõ". Sau khi nạp, popup cho biết bao nhiêu code trong danh sách hiện tại đã có trong log.
+
+**Xóa log** xóa toàn bộ lượt đã ghi. Sau đó các code đó không còn được bỏ qua khi chạy lại, nên xuất log trước khi xóa. Hạn mức đã dùng không bị xóa theo.
 
 ## Tự kiểm tra an toàn
 
@@ -120,11 +127,11 @@ File `SHA256SUMS` nằm **trong** zip chỉ chứng minh các file khớp với 
 Hash của file zip:
 
 ```bash
-sha256sum df-code-garena-1.0.1.zip
+sha256sum df-code-garena-1.0.2.zip
 ```
 
 ```powershell
-(Get-FileHash -Algorithm SHA256 .\df-code-garena-1.0.1.zip).Hash.ToLower()
+(Get-FileHash -Algorithm SHA256 .\df-code-garena-1.0.2.zip).Hash.ToLower()
 ```
 
 Hash từng file, đứng trong thư mục `df-code-garena` vừa giải nén:

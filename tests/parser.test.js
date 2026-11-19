@@ -35,7 +35,7 @@ test("không gửi nhầm chữ mô tả thành code", () => {
 });
 
 test("dấu đầu dòng, số thứ tự, ngoặc kép và ký tự vô hình bị bỏ", () => {
-  assert.deepEqual(P.parseCodes("1. DFONE111\n2) DFTWO222\n- DFTHREE3\n• DFFOUR44\n\"DFQUOTE5\"\nDF​ZERO66﻿"), [
+  assert.deepEqual(P.parseCodes("1. DFONE111\n2) DFTWO222\n- DFTHREE3\n• DFFOUR44\n\"DFQUOTE5\"\nDF\u200BZERO66\uFEFF"), [
     "DFONE111",
     "DFTWO222",
     "DFTHREE3",
@@ -317,7 +317,8 @@ test("đọc lại đúng file vừa xuất, không mất dòng nào", () => {
   assert.equal(back.length, 4);
   assert.deepEqual(back.map((e) => e.code + ":" + e.status), ["DFOK0001:ok", "DFBAD002:error", "DFWAIT03:unknown", "DFBAD002:ok"]);
   assert.equal(back[1].detail, "Code đã hết hạn | 1002");
-  assert.equal(back[0].atText, "19/11/2026 14:00:00");
+  assert.equal(P.entryTime(back[0]), "19/11/2026 14:00:00");
+  assert.equal(back[0].at, new Date(NOW).toISOString());
 });
 
 test("gộp log nạp từ file không nhân đôi lượt đã có", () => {
@@ -395,4 +396,143 @@ test("ghi chú dừng luôn kết thúc bằng dấu câu", () => {
   assert.match(note, /1100\.$/);
   assert.equal(P.sentence("Xong!"), "Xong!");
   assert.equal(P.sentence(""), "");
+});
+
+/* ---------- Log: lỗi tạm thời, giới hạn, nạp và đối chiếu ---------- */
+
+test("lỗi tạm thời ghi 'chưa rõ' để lần sau còn nhập lại; lỗi thật vẫn là 'lỗi'", () => {
+  const cases = [
+    [{ source: "api", raw: { code: 429, msg: "Too Many Requests", httpStatus: 429 } }, "unknown"],
+    [{ source: "api", raw: { code: 503, msg: "Service Unavailable", httpStatus: 503 } }, "unknown"],
+    [{ source: "api", raw: { httpStatus: 502 } }, "unknown"],
+    [{ source: "dialog", text: "Network error, please try again" }, "unknown"],
+    [{ source: "dialog", text: "Thao tác quá nhiều lần, vui lòng thử lại sau" }, "unknown"],
+    [{ source: "api", raw: { code: 400068, msg: "The current cdkey has reached the redemption limit", screen: "error_hint_400068" } }, "error"],
+    [{ source: "api", raw: { code: 400067, msg: "The current user has reached the redemption limit of cdkey group" } }, "error"],
+    [{ source: "dialog", text: "Code không hợp lệ, vui lòng thử lại" }, "error"],
+  ];
+  for (const [result, want] of cases) {
+    const e = P.toEntry("DFTEMP01", result, NOW);
+    assert.equal(e.status, want, JSON.stringify(result));
+    assert.equal(P.settledCodes([e]).has("DFTEMP01"), want === "error");
+  }
+  assert.equal(P.toEntry("DFTEMP02", { source: "api", raw: { httpStatus: 502 } }, NOW).detail, "Trang trả mã HTTP 502.");
+});
+
+test("một lỗi máy chủ lẻ thì nhập tiếp, hai lỗi liên tiếp thì dừng, 429 dừng ngay", () => {
+  const ctx = {};
+  const e1 = P.toEntry("DF5XX001", { source: "api", raw: { code: 500, msg: "Internal error", httpStatus: 500 } }, NOW);
+  assert.equal(P.judge(e1, { source: "api", raw: { httpStatus: 500 } }, ctx, {}).action, "continue");
+  const e2 = P.toEntry("DF5XX002", { source: "api", raw: { code: 500, msg: "Internal error", httpStatus: 500 } }, NOW);
+  assert.equal(P.judge(e2, { source: "api", raw: { httpStatus: 500 } }, ctx, {}).action, "stop");
+  const e3 = P.toEntry("DF429003", { source: "api", raw: { code: 429, msg: "Too Many Requests", httpStatus: 429 } }, NOW);
+  assert.equal(P.judge(e3, { source: "api", raw: { httpStatus: 429 } }, {}, {}).action, "stop");
+});
+
+test("log cũ ghi lỗi tạm thời là 'lỗi' được đổi thành 'chưa rõ' khi nạp", () => {
+  const text = [
+    "=== LỖI (3) ===",
+    "DFOLD429\tToo Many Requests | 429",
+    "DFOLDRISK\tThao tác quá nhiều lần, vui lòng thử lại sau",
+    "GARENADFNY2501E034\terror_hint_400068 | The current cdkey has reached the redemption limit",
+  ].join("\n");
+  const back = P.parseLog(text);
+  assert.deepEqual(back.map((e) => e.code + ":" + e.status), ["DFOLD429:unknown", "DFOLDRISK:unknown", "GARENADFNY2501E034:error"]);
+  const skip = P.settledCodes(back);
+  assert.ok(!skip.has("DFOLD429") && !skip.has("DFOLDRISK") && skip.has("GARENADFNY2501E034"));
+});
+
+test("đọc được giờ của cả hai định dạng log", () => {
+  const a = P.parseTimeText("19/11/2026 10:54:29");
+  const b = P.parseTimeText("10:54:29 19/11/2026");
+  assert.equal(a, new Date(2026, 10, 19, 10, 54, 29).toISOString());
+  assert.equal(a, b);
+  assert.equal(P.parseTimeText("—"), "");
+  assert.equal(P.parseTimeText("32/13/2026 99:99:99"), "");
+});
+
+test("đọc đúng file log thật xuất từ bản 1.0.0", () => {
+  const real = [
+    "DF Code Garena — nhật ký đổi code", "Phiên bản: 1.0.0", "Xuất lúc: 19/11/2026 11:13:05",
+    "Chế độ: Bảo vệ tài khoản, nghỉ ngẫu nhiên 20–30 giây", "Tổng: 4 lượt, 2 dùng được, 2 lỗi, 0 chưa rõ", "",
+    "=== DÙNG ĐƯỢC (2) ===", "DFVNA4T8Z6P3", "ga_aurora", "",
+    "=== LỖI (2) ===",
+    "GARENADFCBT2503X9D1\tThe current cdkey has reached the redemption limit | 400068",
+    "CRAZYPARTY1710\terror_hint_400067 | The current user has reached the redemption limit of cdkey group", "",
+    "=== CHI TIẾT ===",
+    "[OK] 19/11/2026 10:54:06  DFVNA4T8Z6P3  —  Đã nhận thành công! Vui lòng kiểm tra hộp thư trong game của bạn.",
+    "[LỖI] 19/11/2026 10:55:24  GARENADFCBT2503X9D1  —  The current cdkey has reached the redemption limit | 400068",
+    "[LỖI] 19/11/2026 10:57:24  CRAZYPARTY1710  —  error_hint_400067 | The current user has reached the redemption limit of cdkey group",
+    "[OK] 19/11/2026 11:09:08  ga_aurora  —  Đã nhận thành công! Vui lòng kiểm tra hộp thư trong game của bạn.", "",
+  ].join("\n");
+  const back = P.parseLog(real);
+  assert.deepEqual(back.map((e) => e.code + ":" + e.status), ["DFVNA4T8Z6P3:ok", "GARENADFCBT2503X9D1:error", "CRAZYPARTY1710:error", "ga_aurora:ok"]);
+  assert.ok(back.every((e) => e.at));
+  const pl = P.plan({ codes: ["DFVNA4T8Z6P3", "ga_aurora", "CRAZYPARTY1710", "DFNEW0001"], log: back, now: NOW });
+  assert.equal(pl.skipped, 3);
+  assert.deepEqual(pl.queue, ["DFNEW0001"]);
+});
+
+test("xuất log có phần CHƯA RÕ, đọc lại đúng", () => {
+  const log = [
+    { at: new Date(NOW).toISOString(), code: "DFWAIT01", status: "unknown", detail: P.UNKNOWN_TEXT },
+    { at: new Date(NOW + 1).toISOString(), code: "DFBAD002", status: "error", detail: "Lỗi | 1002" },
+  ];
+  const text = P.formatLog(log, {});
+  assert.match(text, /=== CHƯA RÕ \(1\) — sẽ nhập lại ở lần chạy sau ===\nDFWAIT01\t/);
+  const onlySections = text.split("=== CHI TIẾT ===")[0];
+  assert.deepEqual(P.parseLog(onlySections).map((e) => e.code + ":" + e.status), ["DFBAD002:error", "DFWAIT01:unknown"]);
+});
+
+test("log 5000 lượt xuất ra vẫn nạp lại được đủ", () => {
+  const big = [];
+  for (let i = 0; i < 5000; i++) {
+    big.push({ at: new Date(NOW - (5000 - i) * 30000).toISOString(), code: "GARENADFNY" + String(i).padStart(4, "0") + "X", status: i % 4 ? "error" : "ok", detail: i % 4 ? "error_hint_400068 | The current cdkey has reached the redemption limit" : "Đã nhận thành công! Vui lòng kiểm tra hộp thư trong game của bạn." });
+  }
+  const text = P.formatLog(big, { version: "1.0.2" });
+  assert.ok(Buffer.byteLength(text) < P.LIMITS.maxLogFileBytes, "file xuất phải nhỏ hơn giới hạn nạp");
+  const back = P.parseLog(text);
+  assert.equal(back.length, 5000);
+  assert.equal(P.mergeLogs(big, back).length, 5000);
+});
+
+test("cắt log không làm mất thông tin bỏ qua code", () => {
+  const log = [];
+  log.push({ at: new Date(NOW - 9000).toISOString(), code: "DFKEEP01", status: "error", detail: "x" });
+  log.push({ at: new Date(NOW - 8000).toISOString(), code: "DFDUP001", status: "error", detail: "lần 1" });
+  log.push({ at: new Date(NOW - 7000).toISOString(), code: "DFWAIT01", status: "unknown", detail: "y" });
+  log.push({ at: new Date(NOW - 6000).toISOString(), code: "DFDUP001", status: "error", detail: "lần 2" });
+  log.push({ at: new Date(NOW - 5000).toISOString(), code: "DFNEW001", status: "ok", detail: "z" });
+  const cut1 = P.capLog(log, 4);
+  assert.deepEqual(cut1.map((e) => e.code + ":" + e.detail), ["DFKEEP01:x", "DFWAIT01:y", "DFDUP001:lần 2", "DFNEW001:z"]);
+  const cut2 = P.capLog(log, 3);
+  assert.deepEqual(cut2.map((e) => e.code), ["DFKEEP01", "DFDUP001", "DFNEW001"]);
+  assert.ok(P.settledCodes(cut2).has("DFKEEP01"));
+  const cut3 = P.capLog(log, 2);
+  assert.deepEqual(cut3.map((e) => e.code), ["DFDUP001", "DFNEW001"]);
+});
+
+test("nạp file log cũ không đẩy mất lượt mới đang có", () => {
+  const cur = [];
+  for (let i = 0; i < 6; i++) cur.push({ at: new Date(NOW + i * 1000).toISOString(), code: "DFCUR00" + i, status: "ok", detail: "mới" });
+  const old = [];
+  for (let i = 0; i < 4; i++) old.push({ atText: "01/01/2026 10:00:0" + i, code: "DFIMP00" + i, status: "error", detail: "cũ" });
+  const merged = P.mergeLogs(cur, old, 8);
+  assert.equal(merged.length, 8);
+  assert.equal(merged.filter((e) => e.code.startsWith("DFCUR")).length, 6);
+  assert.deepEqual(merged.slice(0, 2).map((e) => e.code), ["DFIMP002", "DFIMP003"]);
+  assert.equal(merged[merged.length - 1].code, "DFCUR005");
+});
+
+test("đối chiếu danh sách với log theo trạng thái tốt nhất của từng code", () => {
+  const log = [
+    { code: "DFA00001", status: "error" },
+    { code: "DFA00001", status: "ok" },
+    { code: "DFB00002", status: "error" },
+    { code: "DFC00003", status: "unknown" },
+  ];
+  assert.deepEqual(P.overlap(["DFA00001", "DFB00002", "DFC00003", "DFD00004"], log), { ok: 1, error: 1, unknown: 1, fresh: 1 });
+  const pl = P.plan({ codes: ["DFA00001", "DFB00002", "DFC00003", "DFD00004"], log, now: NOW });
+  assert.equal(pl.skipped, 2);
+  assert.deepEqual(pl.queue, ["DFC00003", "DFD00004"]);
 });

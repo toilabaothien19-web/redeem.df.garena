@@ -1,4 +1,4 @@
-DF Code Garena 1.0.1
+DF Code Garena 1.0.2
 ====================
 
 Tiện ích chỉ nhập code khi tab Trung Tâm Đổi Quà đang mở:
@@ -29,9 +29,12 @@ Dùng
    Để tab đổi code mở trong lúc chạy. Không mở hai tab đổi quà để chạy cùng lúc.
 6. Bấm Dừng ở bất kỳ tab nào để dừng. Đang nghỉ thì dừng ngay, đang nhập thì dừng sau code đó.
 7. Nhật ký ghi nguyên câu trên trang và câu máy chủ, kèm mã số. Lọc theo Dùng được, Lỗi, Chưa rõ.
-   Chưa rõ nghĩa là không đọc được kết quả hoặc code chưa được gửi; lần sau vẫn nhập lại.
-8. Bấm Xuất log để tải file .txt. Đọc file log trước khi chia sẻ.
-9. Bấm Tải log lên để nạp lại file đó. Lần chạy sau bỏ qua code đã thành công và code lỗi.
+   Chưa rõ nghĩa là không đọc được kết quả, code chưa được gửi, hoặc trang báo lỗi tạm thời
+   (quá nhiều lần, thử lại sau, lỗi máy chủ); lần sau vẫn nhập lại.
+8. Bấm Xuất log để tải file .txt. Đọc file log trước khi chia sẻ. Xóa log thì các code đó
+   không còn được bỏ qua khi chạy lại, nên xuất log trước khi xóa.
+9. Bấm Tải log lên để nạp lại file đó (tối đa 2 MB). Popup cho biết bao nhiêu code trong danh sách
+   đã có trong log. Lần chạy sau bỏ qua code đã thành công và code lỗi.
 
 Bảo mật
 - Mã tiện ích được viết riêng cho việc này. Không nhúng thư viện hay mã nguồn bên ngoài.
@@ -39,7 +42,7 @@ Bảo mật
 - Mã nguồn không có lệnh gửi dữ liệu đi nơi khác. CSP chặn kết nối ở popup và service worker.
 - Không đọc và không lưu cookie, tên đăng nhập, mã đăng nhập.
 - Chỉ nhìn phản hồi đổi code (RedeemCDKey) của đúng lần đang chạy.
-- Lệnh nhập code đi qua một kênh riêng. Script trên trang không giữ kênh đó.
+- Lệnh nhập code đi qua một kênh riêng. Script trên trang không xin được kênh đó để ra lệnh nhập code.
 - Token, email, liên kết và dãy số dài bị xóa trước khi ghi nhật ký.
 - Không có trình theo dõi. Log chỉ nằm trên máy bạn, trừ khi chính bạn tải file đi.
 
