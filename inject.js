@@ -11,6 +11,10 @@
   const CHANNEL = "dfcode-garena-v2";
   const CODE_RE = /^[A-Za-z0-9_-]{4,80}$/;
   const WAIT_MS = 15000;
+  /* Trang có thể hiện hộp thoại chậm hơn phản hồi máy chủ. Có phản hồi mà chưa thấy câu trên trang thì chờ thêm. */
+  const SCREEN_AFTER_RAW_MS = 2500;
+  /* Thấy câu trên trang mà chưa đọc được phản hồi máy chủ thì chờ phản hồi một chút rồi mới ghi. */
+  const RAW_AFTER_SCREEN_MS = 400;
 
   let port = null;
   let pending = null;
@@ -233,31 +237,36 @@
     };
   }
 
-  /* Chỉ nhận câu mới xuất hiện sau lần bấm, không lấy lại câu của code trước. */
-  function freshScreen(before) {
+  /* Chỉ nhận câu mới xuất hiện sau lần bấm, không lấy lại câu của code trước.
+   * Câu mới là câu khác câu cũ, hoặc câu hiện trên một hộp thoại vừa tắt rồi mở lại
+   * (code liên tiếp cùng lỗi thì trang hiện lại đúng câu cũ). seen ghi lại hộp thoại đã từng tắt. */
+  function freshScreen(before, seen) {
     const now = snapshotDialog();
-    const changed = [];
-    const same = [];
-    function take(text, was, opened) {
-      if (!text) return;
-      if (text !== was) {
-        if (changed.indexOf(text) === -1) changed.push(text);
-      } else if (opened && same.indexOf(text) === -1 && changed.indexOf(text) === -1) {
-        same.push(text);
-      }
+    if (!now.diaOpen) seen.dia = true;
+    if (!now.tipShown) seen.tip = true;
+    const parts = [];
+    function take(text, was, reopened) {
+      if (!text || parts.indexOf(text) !== -1) return;
+      if (text !== was || reopened) parts.push(text);
     }
-    if (now.diaOpen) take(now.diaText, before.diaText, !before.diaOpen);
-    if (now.tipShown) take(now.tipText, before.tipText, !before.tipShown);
-    return {
-      changed: changed.join(" | ").slice(0, 500),
-      same: same.join(" | ").slice(0, 500),
-    };
+    if (now.diaOpen) take(now.diaText, before.diaText, seen.dia);
+    if (now.tipShown) take(now.tipText, before.tipText, seen.tip);
+    return parts.join(" | ").slice(0, 500);
   }
 
   function closeDialog() {
     const dia = document.querySelector("#diaTips");
     const btn = document.querySelector("#diaTips .btn-close");
     if (dia && btn && isShown(dia)) btn.click();
+  }
+
+  /* Chờ hộp thoại cũ đóng hẳn (kể cả hiệu ứng mờ dần), tối đa 1,5 giây. */
+  async function waitDialogClosed() {
+    const until = Date.now() + 1500;
+    while (Date.now() < until) {
+      if (!isShown(document.querySelector("#diaTips"))) return;
+      await sleep(50);
+    }
   }
 
   function finishRedeem(raw, screen) {
@@ -294,10 +303,12 @@
     }
     closeDialog();
     await sleep(150);
+    await waitDialogClosed();
     if (document.querySelector("iframe[src*='captcha'], iframe[src*='geetest'], .geetest_panel")) {
       return { source: "ui", text: "Trang đang yêu cầu xác minh (captcha)." };
     }
     const before = snapshotDialog();
+    const seen = { dia: !before.diaOpen, tip: !before.tipShown };
     pending = { code: code, raw: null, armed: false, since: 0, seen: 0, ambiguous: false };
     setInput(ui.input, code);
     await sleep(400 + Math.floor(Math.random() * 500));
@@ -305,20 +316,21 @@
     pending.armed = true;
     ui.button.click();
     const started = Date.now();
-    let sawAt = 0;
+    let rawAt = 0;
+    let screenAt = 0;
     while (Date.now() - started < WAIT_MS) {
       if (pending && pending.ambiguous && !pending.raw) {
         pending = null;
         return { source: "unknown" };
       }
       const raw = pending && pending.raw;
-      const view = freshScreen(before);
-      const screen = view.changed;
-      if ((raw || screen || view.same) && !sawAt) sawAt = Date.now();
-      const waited = sawAt ? Date.now() - sawAt : 0;
+      const screen = freshScreen(before, seen);
+      const now = Date.now();
+      if (raw && !rawAt) rawAt = now;
+      if (screen && !screenAt) screenAt = now;
       if (raw && screen) return finishRedeem(raw, screen);
-      if (screen && waited >= 200) return finishRedeem(raw, screen);
-      if ((raw || view.same) && waited >= 400) return finishRedeem(raw, screen || view.same);
+      if (screen && now - screenAt >= RAW_AFTER_SCREEN_MS) return finishRedeem(raw, screen);
+      if (raw && now - rawAt >= SCREEN_AFTER_RAW_MS) return finishRedeem(raw, "");
       await sleep(40);
     }
     pending = null;

@@ -6,9 +6,9 @@
 
 Tiện ích Chrome / Edge để nhập danh sách code Delta Force trên trang đổi quà chính thức của Garena. Mã nguồn để công khai, không qua bước build: file bạn đọc trên GitHub là file được cài vào trình duyệt.
 
-Phiên bản hiện tại: **1.0.0** · [Nhật ký thay đổi](CHANGELOG.md)
+Phiên bản hiện tại: **1.0.1** · [Nhật ký thay đổi](CHANGELOG.md)
 
-Bản trước khi viết lại (trước đây đánh số 1.9.9) được đánh số lại thành **0.5.0 beta** và chỉ giữ trong lịch sử mã (tag `v0.5.0`, commit `83f3cfb`) để đối chiếu, không phát hành file zip. Hãy dùng 1.0.0.
+Bản trước khi viết lại (trước đây đánh số 1.9.9) được đánh số lại thành **0.5.0 beta** và chỉ giữ trong lịch sử mã (tag `v0.5.0`, commit `83f3cfb`) để đối chiếu, không phát hành file zip. Hãy dùng bản mới nhất.
 
 Trang đổi code: https://redeem.df.garena.sg/vi/cdkgarena.html
 
@@ -46,7 +46,7 @@ Tiện ích vẫn là công cụ nhập tự động trên tài khoản bạn đ
 
 Cần Chrome hoặc Edge từ phiên bản 111. Không dùng được trên Chrome điện thoại.
 
-1. Tải `df-code-garena-1.0.0.zip` từ [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) của kho này. Không cài file đính kèm trong bài viết lạ, nhóm chat, hoặc kho fork chưa đối chiếu.
+1. Tải `df-code-garena-1.0.1.zip` từ [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) của kho này. Không cài file đính kèm trong bài viết lạ, nhóm chat, hoặc kho fork chưa đối chiếu.
 2. Đối chiếu hash như mục [Tự kiểm tra an toàn](#tự-kiểm-tra-an-toàn). Hash lệch thì xóa và không dùng.
 3. Nếu máy đã có thư mục bản cũ, xóa thư mục đó. Không giải nén đè.
 4. Giải nén. Bên trong là thư mục `df-code-garena`. Tên file zip có số phiên bản, tên thư mục thì giữ nguyên.
@@ -120,11 +120,11 @@ File `SHA256SUMS` nằm **trong** zip chỉ chứng minh các file khớp với 
 Hash của file zip:
 
 ```bash
-sha256sum df-code-garena-1.0.0.zip
+sha256sum df-code-garena-1.0.1.zip
 ```
 
 ```powershell
-(Get-FileHash -Algorithm SHA256 .\df-code-garena-1.0.0.zip).Hash.ToLower()
+(Get-FileHash -Algorithm SHA256 .\df-code-garena-1.0.1.zip).Hash.ToLower()
 ```
 
 Hash từng file, đứng trong thư mục `df-code-garena` vừa giải nén:

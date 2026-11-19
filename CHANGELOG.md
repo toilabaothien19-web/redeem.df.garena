@@ -2,6 +2,15 @@
 
 Từ bản 1.0.0, số phiên bản được đánh lại. Mã trước khi viết lại, trước đây đánh số 1.9.9, nay là **0.5.0 beta**. Các mốc cũ 1.0 đến 1.9.9 vẫn giữ ở cuối file với số cũ, chỉ để tra cứu.
 
+## 1.0.1
+
+- Log ghi đủ câu trên trang cả khi hộp thoại của Garena hiện chậm hơn phản hồi máy chủ. Trước đây có lần chỉ ghi câu của máy chủ, ví dụ `The current cdkey has reached the redemption limit | 400068` thay vì `error_hint_400068 | The current cdkey has reached the redemption limit`; với code thành công có thể chỉ ghi số `0`. Giờ có phản hồi mà chưa thấy hộp thoại thì chờ thêm tối đa 2,5 giây.
+- Nhận đúng câu mới khi nhiều code liên tiếp cùng một lỗi (trang hiện lại đúng câu cũ) và khi hộp thoại có hiệu ứng mờ dần.
+- Demo Code: thêm 42 code, tổng cộng 408.
+- HUONG-DAN.txt: thêm lại hướng dẫn nâng cấp (bấm nút tải lại trên thẻ tiện ích).
+
+Cách đổi code trên trang, các mức bảo vệ và quyền giữ nguyên.
+
 ## 1.0.0
 
 Viết lại toàn bộ mã, giữ nguyên cách nhập code trên trang và các mức bảo vệ của bản 0.5.0 beta (trước đây đánh số 1.9.9).
