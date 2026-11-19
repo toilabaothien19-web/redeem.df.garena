@@ -1,8 +1,20 @@
-/* Chạy cùng trang đổi quà: điền ô code, bấm Đổi, đọc phản hồi thật của trang. */
+/* DF Code Garena — cầu nối chạy cùng trang đổi quà (MAIN world).
+ *
+ * Việc duy nhất: điền code vào ô, bấm nút Đổi của trang, rồi đọc phản hồi RedeemCDKey
+ * của đúng lần bấm đó và câu trang hiện ra. Bọc fetch/XMLHttpRequest chỉ để ĐỌC phản hồi
+ * mà chính trang Garena gửi. Không tạo request mới, không đọc cookie, không gửi gì đi nơi khác.
+ * Kết quả chỉ đi qua MessagePort riêng với runner.js.
+ */
 (function () {
-  var CHANNEL = "dfcode-garena-v1";
-  var pending = null;
-  var port = null;
+  "use strict";
+
+  const CHANNEL = "dfcode-garena-v2";
+  const CODE_RE = /^[A-Za-z0-9_-]{4,80}$/;
+  const WAIT_MS = 15000;
+
+  let port = null;
+  let pending = null;
+  let busy = false;
 
   function sleep(ms) {
     return new Promise(function (resolve) {
@@ -10,74 +22,81 @@
     });
   }
 
-  function isRedeemUrl(url) {
-    var value = String(url || "");
+  /* ---------- Nhận đúng phản hồi đổi code ---------- */
+
+  function isRedeemRequest(url) {
+    const value = String(url || "");
     if (!value || value.length > 2000) return false;
-    var path = value.split("?")[0];
-    return /RedeemCDKey/i.test(path);
+    return /RedeemCDKey/i.test(value.split("?")[0]);
   }
 
+  function requestUrl(input) {
+    try {
+      if (typeof input === "string") return input;
+      if (typeof Request !== "undefined" && input instanceof Request) return input.url;
+      if (typeof URL !== "undefined" && input instanceof URL) return input.href;
+      return input == null ? "" : String(input);
+    } catch (e) {
+      return "";
+    }
+  }
+
+  /* Request này gửi code nào: của mình ("ours"), của lượt khác ("foreign"), hay không rõ. */
   function bodyVerdict(body, code) {
-    var text = "";
-    if (typeof body === "string") text = body;
-    else if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) text = body.toString();
-    else if (typeof FormData !== "undefined" && body instanceof FormData) {
-      try {
-        var field = body.get("cdkey") || body.get("cdk") || "";
+    let text = "";
+    try {
+      if (typeof body === "string") text = body;
+      else if (typeof URLSearchParams !== "undefined" && body instanceof URLSearchParams) text = body.toString();
+      else if (typeof FormData !== "undefined" && body instanceof FormData) {
+        const field = body.get("cdkey") || body.get("cdk") || "";
         text = typeof field === "string" ? "cdkey=" + field : "";
-      } catch (e) {}
-    } else if (body && typeof body === "object") {
-      var named = body.cdkey || body.cdk || body.sCdkey || "";
-      text = typeof named === "string" ? "cdkey=" + named : "";
+      } else if (body && typeof body === "object") {
+        const named = body.cdkey || body.cdk || body.sCdkey || "";
+        text = typeof named === "string" ? "cdkey=" + named : "";
+      }
+    } catch (e) {
+      text = "";
     }
     if (!text) return "unknown";
-    var found = text.match(/(?:cdkey|cdk|sCdkey)["']?\s*[:=]\s*["']?([A-Za-z0-9_-]{4,80})/i);
+    const found = text.match(/(?:cdkey|cdk|sCdkey)["']?\s*[:=]\s*["']?([A-Za-z0-9_-]{4,80})/i);
     if (found) return found[1] === code ? "ours" : "foreign";
     return "unknown";
   }
 
   function urlCode(url) {
-    var found = String(url || "").match(/[?&](?:cdkey|cdk)=([^&#]+)/i);
+    const found = String(url || "").match(/[?&](?:cdkey|cdk)=([^&#]+)/i);
     if (!found) return "";
-    try { return decodeURIComponent(found[1]); } catch (e) { return found[1]; }
+    try {
+      return decodeURIComponent(found[1]);
+    } catch (e) {
+      return found[1];
+    }
   }
 
   function pushMsg(into, value) {
     if (typeof value !== "string") return;
-    var text = value.replace(/\s+/g, " ").trim();
+    const text = value.replace(/\s+/g, " ").trim();
     if (!text || into.indexOf(text) !== -1) return;
     into.push(text);
   }
 
   function pickRaw(parsed) {
-    var out = {};
+    const out = {};
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return out;
-    var code = parsed.code;
+    let code = parsed.code;
     if (code == null) code = parsed.ret;
     if (code == null) code = parsed.iRet;
     if (code == null) code = parsed.errCode;
     if (code == null) code = parsed.errcode;
     if (typeof code === "number" && isFinite(code)) out.code = code;
     else if (typeof code === "string" && /^-?\d{1,8}$/.test(code)) out.code = Number(code);
-    var nested = parsed.data && typeof parsed.data === "object" && !Array.isArray(parsed.data) ? parsed.data : {};
-    var parts = [];
+    const nested = parsed.data && typeof parsed.data === "object" && !Array.isArray(parsed.data) ? parsed.data : {};
+    const parts = [];
     [parsed, nested].forEach(function (obj) {
-      pushMsg(parts, obj.msg);
-      pushMsg(parts, obj.message);
-      pushMsg(parts, obj.sMsg);
-      pushMsg(parts, obj.errMsg);
-      pushMsg(parts, obj.errmsg);
-      pushMsg(parts, obj.desc);
-      pushMsg(parts, obj.sMessage);
-      pushMsg(parts, obj.error);
-      pushMsg(parts, obj.reason);
-      pushMsg(parts, obj.error_hint);
-      pushMsg(parts, obj.errorHint);
-      pushMsg(parts, obj.hint);
-      pushMsg(parts, obj.sHint);
-      pushMsg(parts, obj.tip);
-      pushMsg(parts, obj.showMsg);
-      pushMsg(parts, obj.show_msg);
+      ["msg", "message", "sMsg", "errMsg", "errmsg", "desc", "sMessage", "error", "reason",
+        "error_hint", "errorHint", "hint", "sHint", "tip", "showMsg", "show_msg"].forEach(function (key) {
+        pushMsg(parts, obj[key]);
+      });
     });
     if (!parts.length && typeof parsed.data === "string") pushMsg(parts, parsed.data);
     if (parts.length) out.msg = parts.join(" | ").slice(0, 500);
@@ -85,12 +104,12 @@
   }
 
   function parsePayload(text) {
-    var raw = String(text || "").trim().slice(0, 4000);
+    const raw = String(text || "").trim().slice(0, 4000);
     if (!raw || raw.charAt(0) === "<") return {};
     try {
       return pickRaw(JSON.parse(raw));
     } catch (e) {}
-    var wrapped = raw.match(/^[^(]{0,80}\((\{[\s\S]{0,3500}\})\)\s*;?\s*$/);
+    const wrapped = raw.match(/^[^(]{0,80}\((\{[\s\S]{0,3500}\})\)\s*;?\s*$/);
     if (wrapped) {
       try {
         return pickRaw(JSON.parse(wrapped[1]));
@@ -102,19 +121,19 @@
 
   function takeResponse(url, body, text, at, httpStatus) {
     if (!pending || !pending.armed || pending.raw) return;
-    if (!isRedeemUrl(url)) return;
+    if (!isRedeemRequest(url)) return;
     if (at && at < pending.since) return;
-    var verdict = bodyVerdict(body, pending.code);
+    const verdict = bodyVerdict(body, pending.code);
     if (verdict === "foreign") return;
-    var named = urlCode(url);
+    const named = urlCode(url);
     if (named && named !== pending.code) return;
-    if (verdict === "unknown" && (pending.seen || 0) >= 2) {
+    if (verdict === "unknown" && pending.seen >= 2) {
       pending.ambiguous = true;
       return;
     }
-    var parsed = parsePayload(text);
+    const parsed = parsePayload(text);
     if (!parsed || (parsed.code == null && !parsed.msg)) {
-      if ((pending.seen || 0) >= 2) pending.ambiguous = true;
+      if (pending.seen >= 2) pending.ambiguous = true;
       return;
     }
     if (typeof httpStatus === "number") parsed.httpStatus = httpStatus;
@@ -122,86 +141,103 @@
   }
 
   function noteRedeem(url, at) {
-    if (!pending || !pending.armed || !isRedeemUrl(url)) return;
+    if (!pending || !pending.armed || !isRedeemRequest(url)) return;
     if (at && at < pending.since) return;
-    pending.seen = (pending.seen || 0) + 1;
+    pending.seen += 1;
   }
 
-  var originalOpen = XMLHttpRequest.prototype.open;
-  var originalSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.open = function (method, url) {
-    if (isRedeemUrl(url)) {
-      this.__dfUrl = String(url);
-      this.__dfAt = Date.now();
-    }
+  function xhrText(xhr) {
+    try {
+      const type = xhr.responseType;
+      if (!type || type === "text") return xhr.responseText;
+      if (type === "json") return xhr.response == null ? "" : JSON.stringify(xhr.response);
+    } catch (e) {}
+    return "";
+  }
+
+  const xhrUrls = new WeakMap();
+  const XHR = XMLHttpRequest.prototype;
+  const originalOpen = XHR.open;
+  const originalSend = XHR.send;
+
+  XHR.open = function (method, url) {
+    const value = requestUrl(url);
+    if (isRedeemRequest(value)) xhrUrls.set(this, value);
+    else xhrUrls.delete(this);
     return originalOpen.apply(this, arguments);
   };
-  XMLHttpRequest.prototype.send = function (body) {
-    var xhr = this;
-    if (xhr.__dfUrl) {
-      var sentAt = xhr.__dfAt || Date.now();
-      xhr.addEventListener("load", function () {
+
+  XHR.send = function (body) {
+    const url = xhrUrls.get(this);
+    if (url) {
+      const xhr = this;
+      const sentAt = Date.now();
+      noteRedeem(url, sentAt);
+      const onLoad = function () {
+        xhr.removeEventListener("load", onLoad);
         try {
-          takeResponse(xhr.__dfUrl, body, xhr.responseText, sentAt, xhr.status);
+          takeResponse(url, body, xhrText(xhr), sentAt, xhr.status);
         } catch (e) {}
-      });
+      };
+      xhr.addEventListener("load", onLoad);
     }
-    if (xhr.__dfUrl) noteRedeem(xhr.__dfUrl, sentAt);
     return originalSend.apply(this, arguments);
   };
 
   if (typeof window.fetch === "function") {
-    var originalFetch = window.fetch;
+    const originalFetch = window.fetch;
     window.fetch = function (input, init) {
-      var url = typeof input === "string" ? input : input && input.url ? input.url : "";
-      var startedAt = Date.now();
-      var body = init && init.body;
-      var pendingResponse = originalFetch.apply(this, arguments);
-      if (isRedeemUrl(url)) noteRedeem(url, startedAt);
-      if (pending && pending.armed && startedAt >= pending.since && isRedeemUrl(url)) {
-        pendingResponse.then(function (response) {
-          try {
-            var status = response.status;
-            response.clone().text().then(function (text) {
-              takeResponse(url, body, text, startedAt, status);
-            }).catch(function () {});
-          } catch (e) {}
-        }).catch(function () {});
+      const url = requestUrl(input);
+      const startedAt = Date.now();
+      const body = init && init.body;
+      const reply = originalFetch.apply(this, arguments);
+      if (isRedeemRequest(url)) {
+        noteRedeem(url, startedAt);
+        if (pending && pending.armed && startedAt >= pending.since) {
+          reply.then(function (response) {
+            try {
+              const status = response.status;
+              response.clone().text().then(function (text) {
+                takeResponse(url, body, text, startedAt, status);
+              }, function () {});
+            } catch (e) {}
+          }, function () {});
+        }
       }
-      return pendingResponse;
+      return reply;
     };
   }
+
+  /* ---------- Hộp thoại trên trang ---------- */
 
   function isShown(el) {
     if (!el) return false;
-    var style = window.getComputedStyle(el);
+    const style = window.getComputedStyle(el);
     return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) !== 0;
   }
 
+  function textOf(node) {
+    return node ? (node.innerText || node.textContent || "").replace(/\s+/g, " ").trim() : "";
+  }
+
   function snapshotDialog() {
-    var dia = document.querySelector("#diaTips");
-    var tip = document.querySelector("#superTips");
-    var diaNode = dia ? dia.querySelector("p") || dia : null;
-    var diaText = diaNode ? (diaNode.innerText || diaNode.textContent || "").replace(/\s+/g, " ").trim() : "";
-    var tipText = tip ? (tip.innerText || tip.textContent || "").replace(/\s+/g, " ").trim() : "";
-    var diaOpen = isShown(dia);
-    var tipShown = isShown(tip) && tipText.length > 0;
-    var parts = [];
-    if (diaOpen && diaText) parts.push(diaText);
-    if (tipShown && tipText && parts.indexOf(tipText) === -1) parts.push(tipText);
+    const dia = document.querySelector("#diaTips");
+    const tip = document.querySelector("#superTips");
+    const diaText = textOf(dia ? dia.querySelector("p") || dia : null);
+    const tipText = textOf(tip);
     return {
       diaText: diaText,
       tipText: tipText,
-      diaOpen: diaOpen,
-      tipShown: tipShown,
-      text: parts.join(" | ").slice(0, 500),
+      diaOpen: isShown(dia),
+      tipShown: isShown(tip) && tipText.length > 0,
     };
   }
 
+  /* Chỉ nhận câu mới xuất hiện sau lần bấm, không lấy lại câu của code trước. */
   function freshScreen(before) {
-    var now = snapshotDialog();
-    var changed = [];
-    var same = [];
+    const now = snapshotDialog();
+    const changed = [];
+    const same = [];
     function take(text, was, opened) {
       if (!text) return;
       if (text !== was) {
@@ -218,24 +254,23 @@
     };
   }
 
+  function closeDialog() {
+    const dia = document.querySelector("#diaTips");
+    const btn = document.querySelector("#diaTips .btn-close");
+    if (dia && btn && isShown(dia)) btn.click();
+  }
+
   function finishRedeem(raw, screen) {
     pending = null;
     closeDialog();
     if (raw) {
-      if (screen) raw = Object.assign({}, raw, { screen: screen });
-      return { source: "api", raw: raw };
+      return { source: "api", raw: screen ? Object.assign({}, raw, { screen: screen }) : raw };
     }
     return { source: "dialog", text: screen || "" };
   }
 
-  function closeDialog() {
-    var dia = document.querySelector("#diaTips");
-    var btn = document.querySelector("#diaTips .btn-close");
-    if (dia && btn && isShown(dia)) btn.click();
-  }
-
   function setInput(input, code) {
-    var descriptor = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
+    const descriptor = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
     if (descriptor && descriptor.set) descriptor.set.call(input, code);
     else input.value = code;
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -253,37 +288,34 @@
   }
 
   async function redeemOne(code) {
-    var ui = findControls();
+    const ui = findControls();
     if (!ui.input || !ui.button || ui.input.tagName !== "INPUT") {
-      return {
-        source: "ui",
-        text: "Không thấy ô nhập hoặc nút Đổi. Hãy đăng nhập trên trang đổi quà.",
-      };
+      return { source: "ui", text: "Không thấy ô nhập hoặc nút Đổi. Hãy đăng nhập trên trang đổi quà." };
     }
     closeDialog();
     await sleep(150);
     if (document.querySelector("iframe[src*='captcha'], iframe[src*='geetest'], .geetest_panel")) {
-      return { source: "ui", text: "Trang đang yêu cầu xác minh. Dừng để không tiếp tục tự nhập." };
+      return { source: "ui", text: "Trang đang yêu cầu xác minh (captcha)." };
     }
-    var before = snapshotDialog();
+    const before = snapshotDialog();
     pending = { code: code, raw: null, armed: false, since: 0, seen: 0, ambiguous: false };
     setInput(ui.input, code);
     await sleep(400 + Math.floor(Math.random() * 500));
     pending.since = Date.now();
     pending.armed = true;
     ui.button.click();
-    var started = Date.now();
-    var sawAt = 0;
-    while (Date.now() - started < 15000) {
+    const started = Date.now();
+    let sawAt = 0;
+    while (Date.now() - started < WAIT_MS) {
       if (pending && pending.ambiguous && !pending.raw) {
         pending = null;
         return { source: "unknown" };
       }
-      var raw = pending && pending.raw;
-      var view = freshScreen(before);
-      var screen = view.changed;
+      const raw = pending && pending.raw;
+      const view = freshScreen(before);
+      const screen = view.changed;
       if ((raw || screen || view.same) && !sawAt) sawAt = Date.now();
-      var waited = sawAt ? Date.now() - sawAt : 0;
+      const waited = sawAt ? Date.now() - sawAt : 0;
       if (raw && screen) return finishRedeem(raw, screen);
       if (screen && waited >= 200) return finishRedeem(raw, screen);
       if ((raw || view.same) && waited >= 400) return finishRedeem(raw, screen || view.same);
@@ -293,13 +325,13 @@
     return { source: "unknown" };
   }
 
-  var busy = false;
+  /* ---------- Kênh riêng với runner.js ---------- */
 
   function publicResult(result) {
     if (!result || typeof result !== "object") return { source: "timeout" };
     if (result.source === "api") {
-      var raw = result.raw && typeof result.raw === "object" ? result.raw : {};
-      var clean = {};
+      const raw = result.raw && typeof result.raw === "object" ? result.raw : {};
+      const clean = {};
       if (typeof raw.code === "number" && isFinite(raw.code)) clean.code = raw.code;
       if (typeof raw.msg === "string") clean.msg = raw.msg.slice(0, 500);
       if (typeof raw.screen === "string") clean.screen = raw.screen.slice(0, 500);
@@ -313,43 +345,44 @@
     return { source: "timeout" };
   }
 
-  function isSafeCode(code) {
-    return /^[A-Za-z0-9_-]{4,80}$/.test(code);
-  }
-
-  function reply(message) {
-    if (port) port.postMessage(message);
-  }
-
-  function handleCommand(event) {
-    var data = event.data;
-    if (!data || data.kind !== "redeem" || busy) return;
-    var code = String(data.code || "");
-    if (!isSafeCode(code)) {
-      reply({ kind: "result", id: data.id, code: code, result: publicResult({ source: "ui", text: "Code không đúng định dạng." }) });
+  function onCommand(event) {
+    const data = event.data;
+    if (!data || data.kind !== "redeem" || typeof data.id !== "string") return;
+    const code = String(data.code || "");
+    const id = data.id;
+    function reply(result) {
+      if (port) port.postMessage({ kind: "result", id: id, code: code, result: publicResult(result) });
+    }
+    if (!CODE_RE.test(code)) {
+      reply({ source: "ui", text: "Code không đúng định dạng." });
+      return;
+    }
+    if (busy) {
+      reply({ source: "unknown" });
       return;
     }
     busy = true;
     redeemOne(code).then(function (result) {
       busy = false;
-      reply({ kind: "result", id: data.id, code: code, result: publicResult(result) });
-    }).catch(function () {
+      reply(result);
+    }, function () {
       busy = false;
       pending = null;
-      reply({ kind: "result", id: data.id, code: code, result: { source: "unknown" } });
+      reply({ source: "unknown" });
     });
   }
 
+  /* Nhận đúng một lời chào đầu tiên kèm MessagePort, rồi chặn không cho listener khác trên trang thấy nó. */
   function onHello(event) {
-    if (port) return;
-    if (event.source !== window || !event.data || event.data.channel !== CHANNEL || event.data.kind !== "hello") return;
-    if (!event.ports || !event.ports[0]) return;
+    if (port || event.source !== window) return;
+    const data = event.data;
+    if (!data || data.channel !== CHANNEL || data.kind !== "hello" || !event.ports || !event.ports[0]) return;
+    event.stopImmediatePropagation();
     window.removeEventListener("message", onHello, true);
     port = event.ports[0];
-    port.onmessage = handleCommand;
+    port.onmessage = onCommand;
     port.postMessage({ kind: "ready" });
   }
 
   window.addEventListener("message", onHello, true);
 })();
-

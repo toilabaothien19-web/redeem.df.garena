@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
   "name": "DF Code Garena",
-  "version": "1.9.9",
+  "version": "1.0.0",
   "description": "Nhập danh sách code Delta Force trên trang đổi quà Garena. Chỉ chạy khi trang đó đang mở.",
+  "homepage_url": "https://github.com/toilabaothien19-web/redeem.df.garena",
   "minimum_chrome_version": "111",
   "incognito": "split",
   "permissions": ["storage", "activeTab"],
