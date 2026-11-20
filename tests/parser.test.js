@@ -580,3 +580,101 @@ test("sửa log lưu từ bản trước, chỉ báo thay đổi khi thật sự
   assert.equal(P.migrateLog([]).changed, false);
   assert.equal(P.migrateLog(undefined).changed, false);
 });
+
+/* ---------- Phát hiện ký tự sai ---------- */
+
+test("không cắt mất chữ giống chữ Latin ở đầu hay cuối code rồi nhập nhầm code khác", () => {
+  for (const text of ["АBC123", "DFABC12З", "ＤFABC123", "DFABC12Ⅲ"]) {
+    const a = P.analyzeCodes(text);
+    assert.deepEqual(a.codes, [], text);
+    assert.equal(a.suspects.length, 1, text);
+  }
+});
+
+test("phát hiện từng loại ký tự sai, sửa tự động khi chữ trông giống hệt chữ Latin", () => {
+  const cases = [
+    ["DFАBC123", "DFABC123", true, "homoglyph"],
+    ["GIVEMЕTHAT", "GIVEMETHAT", true, "homoglyph"],
+    ["TrickOrTrеat", "TrickOrTreat", true, "homoglyph"],
+    ["DFΑBC123", "DFABC123", true, "homoglyph"],
+    ["DFⅡ2025", "DFII2025", true, "roman"],
+    ["ＤＦＡＢＣ１２３", "DFABC123", true, "fullwidth"],
+    ["\u{1D403}\u{1D405}\u{1D400}\u{1D401}\u{1D402}\u{1D7CF}\u{1D7D0}\u{1D7D1}", "DFABC123", true, "styled"],
+    ["DF–ABC123", "DF-ABC123", true, "dash"],
+    ["DFƯEAPON91", "DFUEAPON91", false, "accent"],
+    ["DFđABC123", "DFdABC123", false, "accent"],
+    ["DF.ABC123", "DFABC123", false, "special"],
+    ["DF@ABC123", "DFABC123", false, "special"],
+  ];
+  for (const [text, fixed, fixable, kind] of cases) {
+    const a = P.analyzeCodes(text);
+    assert.deepEqual(a.codes, [], text);
+    assert.equal(a.suspects.length, 1, text);
+    const s = a.suspects[0];
+    assert.equal(s.raw, text);
+    assert.equal(s.fixed, fixed, text);
+    assert.equal(s.fixable, fixable, text);
+    assert.ok(s.issues.some((i) => i.kind === kind), text);
+    assert.ok(P.describeSuspect(s).length > 10, text);
+    assert.equal(s.line, 1);
+  }
+});
+
+test("không báo nhầm câu tiếng Việt, giá tiền, ngày tháng, email, chữ Nga thật", () => {
+  const text = [
+    "Xin chào các bạn, code mới hôm nay đây!",
+    "Giá 10.000đ, hạn 30/11/2026",
+    "Không",
+    "Liên hệ email@gmail.com",
+    "Привет мир",
+    "Phần thưởng: 100 brick + skin",
+    "DFABC123 ❤\uFE0F",
+    "1\uFE0F\u20E3 DFKEY456",
+    "① DFNUM789",
+  ].join("\n");
+  const a = P.analyzeCodes(text);
+  assert.deepEqual(a.suspects, []);
+  assert.deepEqual(a.codes, ["DFABC123", "DFKEY456", "DFNUM789"]);
+});
+
+test("dòng có code sai không bị tính là dòng không nhận ra; code sai trùng chỉ báo một lần", () => {
+  const a = P.analyzeCodes("DFАBC123\nDFАBC123\nxin chào\nDFOK1234");
+  assert.deepEqual(a.codes, ["DFOK1234"]);
+  assert.equal(a.suspects.length, 1);
+  assert.equal(a.ignored, 1);
+});
+
+test("sửa tự động chỉ thay code sửa chắc được, giữ nguyên code cần sửa tay", () => {
+  const text = "DFАBC123\nDFƯEAPON91\nＤＦ１２３４\nDFOK1234";
+  const a = P.analyzeCodes(text);
+  assert.equal(a.suspects.length, 3);
+  const fixed = P.fixSuspects(text, a.suspects);
+  assert.equal(fixed, "DFABC123\nDFƯEAPON91\nDF1234\nDFOK1234");
+  const b = P.analyzeCodes(fixed);
+  assert.deepEqual(b.codes, ["DFABC123", "DF1234", "DFOK1234"]);
+  assert.equal(b.suspects.length, 1);
+  assert.equal(b.suspects[0].fixable, false);
+});
+
+test("Demo Code không có code nào bị báo ký tự sai", () => {
+  const fs = require("node:fs");
+  const demo = fs.readFileSync(require("node:path").join(__dirname, "..", "demo-codes.txt"), "utf8");
+  const a = P.analyzeCodes(demo);
+  assert.deepEqual(a.suspects, []);
+  assert.equal(a.codes.length, demo.split(/\r?\n/).filter((l) => l.trim()).length);
+});
+
+test("phát hiện ký tự sai vẫn nhanh với văn bản dài toàn chữ lạ", () => {
+  const t = Date.now();
+  P.analyzeCodes(("Привет DFАBC123 ＤＦ１２３ ").repeat(5000));
+  assert.ok(Date.now() - t < 2000);
+});
+
+test("sửa tự động cả code có ký tự vô hình chen giữa", () => {
+  const text = "DF\u0410\uFE0FBC\u200B123";
+  const a = P.analyzeCodes(text);
+  assert.equal(a.suspects.length, 1);
+  const fixed = P.fixSuspects(text, a.suspects);
+  assert.equal(fixed, "DFABC123");
+  assert.deepEqual(P.analyzeCodes(fixed).codes, ["DFABC123"]);
+});

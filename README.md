@@ -6,7 +6,7 @@
 
 Tiện ích Chrome / Edge để nhập danh sách code Delta Force trên trang đổi quà chính thức của Garena. Mã nguồn để công khai, không qua bước build: file bạn đọc trên GitHub là file được cài vào trình duyệt.
 
-Phiên bản hiện tại: **1.0.2** · [Nhật ký thay đổi](CHANGELOG.md)
+Phiên bản hiện tại: **1.0.3** · [Nhật ký thay đổi](CHANGELOG.md)
 
 Bản trước khi viết lại (trước đây đánh số 1.9.9) được đánh số lại thành **0.5.0 beta** và chỉ giữ trong lịch sử mã (tag `v0.5.0`, commit `83f3cfb`) để đối chiếu, không phát hành file zip. Hãy dùng bản mới nhất.
 
@@ -46,7 +46,7 @@ Tiện ích vẫn là công cụ nhập tự động trên tài khoản bạn đ
 
 Cần Chrome hoặc Edge từ phiên bản 111. Không dùng được trên Chrome điện thoại.
 
-1. Tải `df-code-garena-1.0.2.zip` từ [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) của kho này. Không cài file đính kèm trong bài viết lạ, nhóm chat, hoặc kho fork chưa đối chiếu.
+1. Tải `df-code-garena-1.0.3.zip` từ [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) của kho này. Không cài file đính kèm trong bài viết lạ, nhóm chat, hoặc kho fork chưa đối chiếu.
 2. Đối chiếu hash như mục [Tự kiểm tra an toàn](#tự-kiểm-tra-an-toàn). Hash lệch thì xóa và không dùng.
 3. Nếu máy đã có thư mục bản cũ, xóa thư mục đó. Không giải nén đè.
 4. Giải nén. Bên trong là thư mục `df-code-garena`. Tên file zip có số phiên bản, tên thư mục thì giữ nguyên.
@@ -98,6 +98,20 @@ Hạn mức được đếm theo từng lần thật sự bấm Đổi, nằm tr
 - Trên dòng có nhiều chữ, chỉ chữ trông rõ là code mới được lấy (có số, bắt đầu bằng `DF`, viết hoa dài từ 8 ký tự, hoặc kiểu `TrickOrTreat`), để không tốn một lần thử cho chữ như `brick` hay `Delta`. Code nào đứng một mình trên dòng thì luôn được lấy.
 - Tối đa 1000 code và 200 KB mỗi lần.
 
+**Ký tự sai.** Code dán từ mạng hoặc gõ bằng bộ gõ tiếng Việt hay lẫn ký tự trông giống nhưng khác, làm code thành sai và tốn một lần thử. Tiện ích kiểm từng ký tự, **không nhập** code có ký tự sai, và liệt kê chúng ngay dưới ô danh sách, tô màu đúng ký tự sai kèm lý do:
+
+| Loại | Ví dụ | Sửa tự động |
+| --- | --- | --- |
+| Chữ Kirin (Nga), Hy Lạp trông giống chữ Latin | `DFАBC123` (А Kirin), `DFABC12З` (З giống số 3) | có |
+| Số La Mã | `DFⅡ2025` → `DFII2025` | có |
+| Ký tự toàn chiều rộng | `ＤＦＡＢＣ１２３` → `DFABC123` | có |
+| Chữ in đậm/nghiêng kiểu đặc biệt | `𝐃𝐅𝐀𝐁𝐂𝟏𝟐𝟑` → `DFABC123` | có |
+| Gạch ngang dài | `DF–ABC` → `DF-ABC` | có |
+| Chữ có dấu do bộ gõ Telex/VNI tự đổi | `DFƯEAPON` (gõ `w` ra `ư`), `DFđ…` (gõ `dd` ra `đ`) | không: tắt bộ gõ rồi gõ lại |
+| Ký tự đặc biệt giữa code | `DF.ABC123`, `DF@ABC123` | không |
+
+Nút **Sửa tự động** chỉ sửa các loại chắc chắn (ký tự trông giống hệt chữ thường). Còn code có ký tự sai lúc bấm Bắt đầu thì popup hỏi lại. Chữ tiếng Việt bình thường, giá tiền, ngày tháng và email trong bài viết không bị báo nhầm.
+
 ### Nhật ký
 
 - Mỗi lần nhập ghi nguyên câu trên trang và câu máy chủ, kèm mã lỗi. Token, email, liên kết và dãy số dài bị ẩn trước khi ghi.
@@ -129,11 +143,11 @@ File `SHA256SUMS` nằm **trong** zip chỉ chứng minh các file khớp với 
 Hash của file zip:
 
 ```bash
-sha256sum df-code-garena-1.0.2.zip
+sha256sum df-code-garena-1.0.3.zip
 ```
 
 ```powershell
-(Get-FileHash -Algorithm SHA256 .\df-code-garena-1.0.2.zip).Hash.ToLower()
+(Get-FileHash -Algorithm SHA256 .\df-code-garena-1.0.3.zip).Hash.ToLower()
 ```
 
 Hash từng file, đứng trong thư mục `df-code-garena` vừa giải nén:
@@ -188,7 +202,7 @@ Kết quả hợp lệ:
 - địa chỉ `https://redeem.df.garena.sg/...cdkgarena.html` trong [manifest.json](manifest.json) và [parser.js](parser.js) (để nhận đúng trang và cho nút **Mở trang**);
 - địa chỉ kho `https://github.com/toilabaothien19-web/redeem.df.garena` ở `homepage_url`.
 
-Không có địa chỉ máy chủ thứ ba. Nếu bản bạn tải có URL lạ, domain lạ, hoặc `document.cookie`, đó không phải bản này. Công cụ `node tools/pack.mjs --check` làm đúng các bước rà soát này một cách tự động.
+Không có địa chỉ máy chủ thứ ba. Nếu bản bạn tải có URL lạ, domain lạ, hoặc `document.cookie`, đó không phải bản này. Công cụ `node tools/pack.mjs --check` làm đúng các bước rà soát này một cách tự động, và còn chặn ký tự vô hình hoặc ký tự đảo chiều chữ trong mã (loại ký tự có thể dùng để giấu mã khỏi mắt người đọc).
 
 ### 4. Xem Network trên trình duyệt
 

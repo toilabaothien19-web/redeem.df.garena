@@ -53,6 +53,8 @@ const FORBIDDEN = [
   { re: /XMLHttpRequest/, why: "bọc XHR", allow: ["inject.js"] },
   { re: /\bfetch\b/, why: "bọc fetch", allow: ["inject.js"] },
   { re: /\.innerHTML\s*=|insertAdjacentHTML|document\.write/, why: "chèn HTML" },
+  /* Ký tự vô hình hoặc đảo chiều chữ có thể giấu mã khỏi mắt người đọc. Trong mã phải viết dạng \uXXXX. */
+  { re: /[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF\uFE00-\uFE0F]/, why: "ký tự vô hình hoặc đảo chiều chữ" },
 ];
 
 const read = (rel) => readFileSync(join(ROOT, rel));

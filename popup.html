@@ -39,6 +39,12 @@
         placeholder="Mỗi dòng một code. Dán trực tiếp hoặc mở file .txt. Dòng bắt đầu bằng # được bỏ qua."
       ></textarea>
       <p id="parseNote" class="note" hidden></p>
+      <div id="suspects" class="suspects" role="alert" hidden>
+        <p id="suspectTitle" class="suspects-title"></p>
+        <ul id="suspectList" class="suspect-list"></ul>
+        <p id="suspectMore" class="note" hidden></p>
+        <button type="button" id="fixSuspects" class="small" hidden>Sửa tự động</button>
+      </div>
       <div class="row tools">
         <button type="button" id="pick">Mở file .txt</button>
         <button type="button" id="demo">Demo Code</button>

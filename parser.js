@@ -142,10 +142,140 @@
     return /[a-z]/.test(word) && /[A-Z]/.test(word.slice(1));
   }
 
-  /* Cắt ký tự không thuộc code ở hai đầu mỗi từ: ngoặc kép, dấu câu, dấu sao, emoji… ("DFABC123🔥", "**DFABC123**"). */
-  const EDGE_JUNK = /^[^A-Za-z0-9_-]+|[^A-Za-z0-9_-]+$/g;
+  /* Cắt ở hai đầu mỗi từ những ký tự không phải chữ hay số: ngoặc kép, dấu câu, dấu sao, emoji, số mũ, số khoanh tròn…
+   * ("DFABC123🔥", "**DFABC123**", "①DFABC123"). Chữ và số của bảng chữ khác (Kirin, Hy Lạp, toàn chiều rộng, số La Mã)
+   * KHÔNG bị cắt: cắt đi sẽ biến "АBC123" (A Kirin) thành một code khác là "BC123". Chúng được kiểm ở dưới. */
+  const EDGE_JUNK = /^[^\p{L}\p{Nd}\p{Nl}\p{M}_-]+|[^\p{L}\p{Nd}\p{Nl}\p{M}_-]+$/gu;
 
-  function codesInSegment(segment, strict) {
+  /* ---------- Phát hiện ký tự sai trong code ---------- */
+
+  /* Chữ của bảng chữ khác trông giống hệt chữ Latin (dán từ mạng hay gặp). */
+  const HOMOGLYPHS = {
+    "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O",
+    "Р": "P", "С": "C", "Т": "T", "У": "Y", "Х": "X", "Ѕ": "S", "І": "I",
+    "Ј": "J", "З": "3", "а": "a", "е": "e", "о": "o", "р": "p", "с": "c",
+    "у": "y", "х": "x", "ѕ": "s", "і": "i", "ј": "j", "ԁ": "d", "ԛ": "q",
+    "ԝ": "w", "һ": "h", "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H",
+    "Ι": "I", "Κ": "K", "Μ": "M", "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T",
+    "Υ": "Y", "Χ": "X", "ο": "o", "ν": "v", "ı": "i",
+  };
+  const DASHES = /^[‐-―−⁃﹘﹣]$/;
+
+  function scriptOf(ch) {
+    const c = ch.codePointAt(0);
+    if (c >= 0x0400 && c <= 0x052F) return "chữ Kirin (Nga)";
+    if (c >= 0x0370 && c <= 0x03FF) return "chữ Hy Lạp";
+    return "chữ của bảng chữ khác";
+  }
+
+  /* Chữ có dấu (thường do bộ gõ tiếng Việt Telex/VNI tự đổi khi gõ code): trả về chữ gốc không dấu. */
+  function baseLetter(ch) {
+    if (ch === "đ") return "d";
+    if (ch === "Đ") return "D";
+    const base = ch.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    return /^[A-Za-z]$/.test(base) ? base : "";
+  }
+
+  /* Xét từng ký tự không thuộc code trong một từ: loại lỗi, chữ thay thế, và có sửa tự động được không. */
+  function inspectWord(word) {
+    let fixed = "";
+    let fixable = true;
+    const issues = [];
+    for (const ch of word) {
+      if (/^[A-Za-z0-9_-]$/.test(ch)) {
+        fixed += ch;
+        continue;
+      }
+      let to = HOMOGLYPHS[ch] || "";
+      let kind = to ? "homoglyph" : "";
+      if (!kind && DASHES.test(ch)) {
+        to = "-";
+        kind = "dash";
+      }
+      if (!kind && !/\p{No}/u.test(ch)) {
+        const n = ch.normalize("NFKC");
+        if (n !== ch && /^[A-Za-z0-9_-]+$/.test(n)) {
+          const c = ch.codePointAt(0);
+          to = n;
+          kind = c >= 0x2160 && c <= 0x2188 ? "roman" : c >= 0xFF00 && c <= 0xFFEF ? "fullwidth" : "styled";
+        }
+      }
+      if (!kind) {
+        to = baseLetter(ch);
+        if (to) kind = "accent";
+      }
+      if (!kind) kind = "special";
+      if (kind === "accent" || kind === "special") fixable = false;
+      fixed += to;
+      issues.push({ ch: ch, kind: kind, to: to });
+    }
+    return { fixed: fixed, fixable: fixable, issues: issues };
+  }
+
+  function letterCount(text) {
+    const m = text.match(/[A-Za-z]/g);
+    return m ? m.length : 0;
+  }
+
+  /* Một từ không phải code hợp lệ có phải là code bị gõ hoặc dán sai ký tự không. strict: dòng có nhiều chữ. */
+  function suspectOf(word, strict) {
+    if (isCodeToken(word)) return null;
+    const r = inspectWord(word);
+    if (!r.issues.length || !isCodeToken(r.fixed) || letterCount(r.fixed) < 2) return null;
+    /* Ký tự trông giống hệt chữ Latin ở dòng chỉ có một từ thì gần như chắc là code; còn lại phải trông rõ là code. */
+    const likely = r.fixable && !strict ? r.fixed.length >= 4 : looksLikeCode(r.fixed);
+    if (!likely) return null;
+    return { raw: word, fixed: r.fixed, fixable: r.fixable, issues: r.issues };
+  }
+
+  const ISSUE_TEXT = {
+    homoglyph: function (i) { return scriptOf(i.ch) + " “" + i.ch + "” trông giống “" + i.to + "” nhưng khác ký tự"; },
+    roman: function (i) { return "số La Mã “" + i.ch + "”, cần gõ bằng chữ “" + i.to + "”"; },
+    fullwidth: function (i) { return "ký tự toàn chiều rộng “" + i.ch + "”, cần là “" + i.to + "”"; },
+    styled: function (i) { return "chữ kiểu “" + i.ch + "” (in đậm/nghiêng đặc biệt), cần là “" + i.to + "”"; },
+    dash: function (i) { return "gạch ngang dài “" + i.ch + "”, cần là gạch nối “-”"; },
+    accent: function (i) { return "chữ có dấu “" + i.ch + "” — thường do bộ gõ tiếng Việt (Telex/VNI) tự đổi khi gõ; tắt bộ gõ rồi gõ lại"; },
+    special: function (i) { return "ký tự “" + i.ch + "” không có trong code"; },
+  };
+
+  function describeIssue(issue) {
+    const f = ISSUE_TEXT[issue && issue.kind];
+    return f ? f(issue) : "";
+  }
+
+  const GROUP_TEXT = {
+    homoglyph: "chữ của bảng chữ khác (Kirin, Hy Lạp…) trông giống chữ Latin nhưng khác ký tự",
+    roman: "số La Mã, cần gõ bằng chữ cái thường",
+    fullwidth: "ký tự toàn chiều rộng, cần là chữ và số thường",
+    styled: "chữ kiểu in đậm/nghiêng đặc biệt, cần là chữ thường",
+    dash: "gạch ngang dài, cần là gạch nối “-”",
+    accent: "chữ có dấu — thường do bộ gõ tiếng Việt (Telex/VNI) tự đổi khi gõ; tắt bộ gõ rồi gõ lại",
+    special: "ký tự không có trong code",
+  };
+
+  /* Mô tả gọn một code có ký tự sai: gộp theo loại lỗi, mỗi loại kể tối đa 4 ký tự. */
+  function describeSuspect(sus) {
+    const groups = new Map();
+    const issues = sus && Array.isArray(sus.issues) ? sus.issues : [];
+    for (let i = 0; i < issues.length; i++) {
+      const kind = issues[i].kind;
+      if (!groups.has(kind)) groups.set(kind, []);
+      const list = groups.get(kind);
+      if (!list.some(function (x) { return x.ch === issues[i].ch; })) list.push(issues[i]);
+    }
+    const parts = [];
+    groups.forEach(function (list, kind) {
+      if (list.length === 1) {
+        parts.push(describeIssue(list[0]));
+        return;
+      }
+      const chars = list.slice(0, 4).map(function (x) { return "“" + x.ch + "”"; }).join(", ") + (list.length > 4 ? "…" : "");
+      parts.push((GROUP_TEXT[kind] || "ký tự lạ") + " (" + chars + ")");
+    });
+    return parts.join("; ");
+  }
+
+  function codesInSegment(segment, strict, sink) {
     const out = [];
     const parts = segment.split(/[,;|\t，；、]+|\s+[-–—]+\s+/);
     for (let p = 0; p < parts.length; p++) {
@@ -156,18 +286,21 @@
         if (word) clean.push(word);
       }
       if (!clean.length) continue;
-      if (!strict && clean.length === 1) {
-        if (isCodeToken(clean[0])) out.push(clean[0]);
-        continue;
-      }
+      const single = !strict && clean.length === 1;
       for (let c = 0; c < clean.length; c++) {
-        if (looksLikeCode(clean[c])) out.push(clean[c]);
+        const word = clean[c];
+        if (single ? isCodeToken(word) : looksLikeCode(word)) {
+          out.push(word);
+        } else if (sink) {
+          const sus = suspectOf(word, !single);
+          if (sus) sink.push(sus);
+        }
       }
     }
     return out;
   }
 
-  function codesInLine(line) {
+  function codesInLine(line, sink) {
     /* Phần trong ngoặc thường là ghi chú ("(100 brick)", "(hết hạn 30/11)") nhưng cũng có khi là code ("(DFABC123)"):
      * đọc riêng theo luật chặt. Giới hạn 120 ký tự để dòng toàn dấu mở ngoặc không làm treo popup. */
     const notes = [];
@@ -183,23 +316,28 @@
     const segments = text.split(/[:：]/);
     const out = [];
     for (let i = 0; i < segments.length; i++) {
-      const found = codesInSegment(segments[i], i < segments.length - 1);
+      const found = codesInSegment(segments[i], i < segments.length - 1, sink);
       for (let f = 0; f < found.length; f++) out.push(found[f]);
     }
     for (let n = 0; n < notes.length; n++) {
-      const found = codesInSegment(notes[n], true);
+      const found = codesInSegment(notes[n], true, sink);
       for (let f = 0; f < found.length; f++) out.push(found[f]);
     }
     return out;
   }
 
-  /* Trả về code theo đúng thứ tự, bỏ trùng, kèm số dòng không nhận ra. */
+  /* Ký tự vô hình: khoảng trắng rỗng, nối chữ, chọn kiểu emoji, khung phím số. */
+  const INVISIBLE = /[\u200B-\u200D\u2060\uFEFF\uFE00-\uFE0F\u20E3]/g;
+
+  /* Trả về code theo đúng thứ tự, bỏ trùng, kèm số dòng không nhận ra và các code có ký tự sai (không được nhập). */
   function analyzeCodes(text) {
     let raw = String(text == null ? "" : text);
     if (raw.length > LIMITS.maxText) raw = raw.slice(0, LIMITS.maxText);
-    raw = raw.replace(/[\u200B-\u200D\u2060\uFEFF]/g, "");
+    raw = raw.replace(INVISIBLE, "");
     const seen = new Set();
     const codes = [];
+    const suspects = [];
+    const suspectSeen = new Set();
     let duplicates = 0;
     let ignored = 0;
     let truncated = false;
@@ -207,9 +345,16 @@
     for (let i = 0; i < lines.length && !truncated; i++) {
       const line = lines[i].trim();
       if (!line || line.charAt(0) === "#" || line.indexOf("//") === 0) continue;
-      const found = codesInLine(line);
+      const sink = [];
+      const found = codesInLine(line, sink);
+      for (let s = 0; s < sink.length; s++) {
+        if (suspectSeen.has(sink[s].raw)) continue;
+        suspectSeen.add(sink[s].raw);
+        sink[s].line = i + 1;
+        suspects.push(sink[s]);
+      }
       if (!found.length) {
-        ignored++;
+        if (!sink.length) ignored++;
         continue;
       }
       for (let f = 0; f < found.length; f++) {
@@ -226,7 +371,17 @@
         codes.push(code);
       }
     }
-    return { codes: codes, duplicates: duplicates, ignored: ignored, truncated: truncated };
+    return { codes: codes, duplicates: duplicates, ignored: ignored, truncated: truncated, suspects: suspects };
+  }
+
+  /* Thay các code sửa tự động được (ký tự trông giống hệt chữ Latin) trong văn bản bằng bản đã sửa. */
+  function fixSuspects(text, suspects) {
+    /* Bộ đọc tìm code trên văn bản đã bỏ ký tự vô hình, nên phải bỏ chúng ở đây trước khi thay. */
+    let out = String(text == null ? "" : text).replace(INVISIBLE, "");
+    const list = (Array.isArray(suspects) ? suspects : []).filter(function (s) { return s && s.fixable && s.raw && s.fixed; });
+    list.sort(function (a, b) { return b.raw.length - a.raw.length; });
+    for (let i = 0; i < list.length; i++) out = out.split(list[i].raw).join(list[i].fixed);
+    return out;
   }
 
   function parseCodes(text) {
@@ -953,6 +1108,10 @@
     sanitizeText: sanitizeText,
     isCodeToken: isCodeToken,
     looksLikeCode: looksLikeCode,
+    inspectWord: inspectWord,
+    describeIssue: describeIssue,
+    describeSuspect: describeSuspect,
+    fixSuspects: fixSuspects,
     analyzeCodes: analyzeCodes,
     parseCodes: parseCodes,
     clampGap: clampGap,

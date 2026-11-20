@@ -2,6 +2,16 @@
 
 Từ bản 1.0.0, số phiên bản được đánh lại. Mã trước khi viết lại, trước đây đánh số 1.9.9, nay là **0.5.0 beta**. Các mốc cũ 1.0 đến 1.9.9 vẫn giữ ở cuối file với số cũ, chỉ để tra cứu.
 
+## 1.0.3
+
+Phát hiện ký tự sai trong code.
+
+- **Sửa lỗi của 1.0.2:** chữ trông giống chữ Latin nằm ở đầu hoặc cuối code bị cắt mất, khiến tiện ích nhập nhầm một code khác (`АBC123` với A Kirin thành `BC123`; `DFABC12З` thành `DFABC12`), tốn một lần thử. Giờ chỉ cắt emoji, dấu câu, ký hiệu ở hai đầu.
+- Code có ký tự sai không được nhập và được liệt kê dưới ô danh sách, tô màu đúng ký tự sai, kèm lý do và số dòng: chữ Kirin/Hy Lạp trông giống chữ Latin, số La Mã, ký tự toàn chiều rộng, chữ in đậm/nghiêng kiểu đặc biệt, gạch ngang dài, chữ có dấu do bộ gõ Telex/VNI, ký tự đặc biệt giữa code.
+- Nút **Sửa tự động** cho các loại sửa chắc được. Bấm Bắt đầu khi còn code có ký tự sai thì popup hỏi lại.
+- Bỏ thêm ký tự vô hình hay gặp khi dán emoji (chọn kiểu emoji, khung phím số).
+- `tools/pack.mjs --check` chặn ký tự vô hình và ký tự đảo chiều chữ trong mã tiện ích. Các biểu thức trong mã viết dạng `\uXXXX` thay vì ký tự thật.
+
 ## 1.0.2
 
 Tập trung vào log: xóa, xuất, nạp và đối chiếu code.

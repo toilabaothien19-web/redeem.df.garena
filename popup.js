@@ -14,6 +14,7 @@
   const el = {};
   [
     "ver", "status", "statusBox", "statusAction", "codes", "count", "parseNote", "pick", "demo", "clearCodes", "file",
+    "suspects", "suspectTitle", "suspectList", "suspectMore", "fixSuspects",
     "protect", "protectInfo", "freePace", "randomGap", "gapBlock", "gap", "gapValue", "skipLogged",
     "statTotal", "statFresh", "statQueue", "skipNote", "quota", "eta", "start", "stop", "progressBox", "barWrap", "bar", "runTally",
     "progress", "logCount", "fAll", "fOk", "fError", "fUnknown", "log", "logMore", "export", "importLog", "clearLog",
@@ -268,8 +269,55 @@
     }
   }
 
+  /* Khung cảnh báo code có ký tự sai: chỉ vẽ lại khi danh sách đổi. */
+  const SUSPECT_VIEW = 6;
+  let suspectsDrawn = null;
+  function renderSuspects(a) {
+    if (suspectsDrawn === a) return;
+    suspectsDrawn = a;
+    const list = a.suspects || [];
+    el.suspects.hidden = !list.length;
+    el.suspectList.textContent = "";
+    if (!list.length) return;
+    const fixable = list.filter(function (s) { return s.fixable; }).length;
+    put(el.suspectTitle, list.length + " code có ký tự sai, sẽ không được nhập:");
+    const frag = document.createDocumentFragment();
+    list.slice(0, SUSPECT_VIEW).forEach(function (sus) {
+      const li = document.createElement("li");
+      const code = document.createElement("span");
+      code.className = "code";
+      for (const ch of sus.raw) {
+        if (/^[A-Za-z0-9_-]$/.test(ch)) {
+          code.appendChild(document.createTextNode(ch));
+        } else {
+          const mark = document.createElement("mark");
+          mark.textContent = ch;
+          code.appendChild(mark);
+        }
+      }
+      li.appendChild(code);
+      if (sus.fixable) {
+        const fix = document.createElement("span");
+        fix.className = "code fix";
+        fix.textContent = " → " + sus.fixed;
+        li.appendChild(fix);
+      }
+      const why = document.createElement("span");
+      why.className = "why";
+      why.textContent = "Dòng " + sus.line + ": " + P.describeSuspect(sus) + ".";
+      li.appendChild(why);
+      frag.appendChild(li);
+    });
+    el.suspectList.appendChild(frag);
+    el.suspectMore.hidden = list.length <= SUSPECT_VIEW;
+    put(el.suspectMore, list.length > SUSPECT_VIEW ? "Và " + (list.length - SUSPECT_VIEW) + " code khác." : "");
+    el.fixSuspects.hidden = !fixable;
+    put(el.fixSuspects, "Sửa tự động " + fixable + " code" + (fixable < list.length ? " (chữ trông giống chữ Latin)" : ""));
+  }
+
   function renderPlan(now) {
     const a = analysis();
+    renderSuspects(a);
     const s = settings();
     const active = runActive(now);
     const pl = P.plan({ codes: a.codes, log: model.log, settings: s, attempts: model.attempts, now: now });
@@ -603,6 +651,15 @@
     flash("Đã nạp " + list.length + " Demo Code.", "ok");
   });
 
+  el.fixSuspects.addEventListener("click", function () {
+    const a = analysis();
+    const fixable = (a.suspects || []).filter(function (s) { return s.fixable; });
+    if (!fixable.length) return;
+    setCodes(P.fixSuspects(el.codes.value, fixable));
+    const left = analysis().suspects.length;
+    flash("Đã sửa " + fixable.length + " code." + (left ? " Còn " + left + " code cần tự sửa tay." : " Kiểm tra lại danh sách trước khi bắt đầu."), "ok");
+  });
+
   el.clearCodes.addEventListener("click", async function () {
     if (!el.codes.value.trim()) return;
     if (!(await ask("Xóa toàn bộ danh sách code trong ô? Log không bị xóa.", "Xóa danh sách"))) return;
@@ -626,6 +683,14 @@
     if (!pl.ok) {
       flash(pl.reason, "warn");
       return;
+    }
+    if (a.suspects && a.suspects.length) {
+      const go = await ask(
+        a.suspects.length + " code có ký tự sai sẽ không được nhập (xem cảnh báo dưới ô danh sách)."
+          + " Vẫn bắt đầu với " + pl.queue.length + " code còn lại?",
+        "Vẫn bắt đầu",
+      );
+      if (!go) return;
     }
     if (!s.protect) {
       const ok = await ask(
