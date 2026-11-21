@@ -2,6 +2,43 @@
 
 Từ bản 1.0.0, số phiên bản được đánh lại. Mã trước khi viết lại, trước đây đánh số 1.9.9, nay là **0.5.0 beta**. Các mốc cũ 1.0 đến 1.9.9 vẫn giữ ở cuối file với số cũ, chỉ để tra cứu.
 
+## 1.1.0
+
+Thêm bản quốc tế (thử nghiệm) và phát hiện ký tự sai trong code. Bản 1.0.3 không phát hành riêng; mọi thay đổi của nó nằm trong bản này.
+
+Bản quốc tế (thử nghiệm)
+
+- Popup có hai nút ngay trên ô danh sách code: **Bản Garena** và **Bản quốc tế (thử nghiệm)**, kèm ghi chú cho từng bản. Lựa chọn được nhớ; đang chạy thì không đổi được.
+- Bản quốc tế chạy trên trang đổi quà của Level Infinite: https://www.playdeltaforce.com/vi/cdkredeem.html (mọi ngôn ngữ của trang). Manifest thêm đúng trang này vào `content_scripts`; quyền vẫn chỉ có `storage` và `activeTab`.
+- Chỉ đổi bằng tài khoản đã đăng nhập trên trang (nút Redeem ở thẻ tài khoản). Không dùng cách đổi bằng UID vì cách đó cần captcha Tencent. Trang còn ở chế độ UID (chưa đăng nhập) thì tiện ích không bấm. Đang ở thẻ UID khi đã đăng nhập thì tự chuyển sang thẻ tài khoản.
+- Đã đối chiếu mã của hai trang: cùng khung giao diện, cùng máy chủ đổi code (`sg-act.playerinfinite.com`, `RedeemCDKey`) và cùng câu tiếng Việt, nhưng gửi cho hai mã game khác nhau (Garena `30150`, quốc tế `29158`). Vì vậy code hai bản không dùng chung. Demo Code là code Garena nên bị tắt ở bản quốc tế.
+- Log ghi bản của từng lượt. "Bỏ qua code đã có trong log" và phần đối chiếu chỉ tính lượt của cùng bản. Log cũ không ghi bản được tính là của Garena.
+- File log: lượt của bản quốc tế có `QT` trước giờ ở phần CHI TIẾT, và có mục tóm tắt riêng `=== QUỐC TẾ — DÙNG ĐƯỢC / LỖI / CHƯA RÕ ===`. Log chỉ có Garena thì giống hệt bản trước.
+- Tab đang mở là trang của bản kia thì popup báo và có nút chuyển bản. Bấm Bắt đầu ở bản quốc tế thì popup hỏi lại. Runner từ chối chạy nếu bản trong popup khác trang đang mở.
+- Hạn mức bảo vệ tính chung cho cả hai bản.
+
+Biểu tượng
+
+- Màu biểu tượng theo theme của trang FADEX.VN: xanh lá `#0ff796` (bản Garena), xanh dương `#0079d5`, màu mặc định của trang (bản quốc tế), đỏ `#f7413d` khi lần chạy gần nhất có dù chỉ một code lỗi hoặc chưa rõ. Đỏ ngay từ code lỗi đầu tiên, giữ đỏ tới khi bắt đầu lần chạy mới, đổi bản, hoặc xóa log. Chạy xong không lỗi thì giữ nguyên màu của bản.
+- Số code còn lại trên biểu tượng có nền cùng màu biểu tượng: màu đậm khi đang nhập, sắc nhạt khi đang nghỉ (trước đây xanh đậm và vàng cố định).
+- Popup dùng cùng bảng màu: xanh lá `#0ff796` ở bản Garena; chọn bản quốc tế thì nút, viền và logo trên popup chuyển sang xanh dương.
+- `tools/icons.py` tạo biểu tượng xanh dương và đỏ từ biểu tượng gốc (chỉ đổi phần tam giác).
+
+Cả hai bản
+
+- Mã 601008 và 503601 (trang không coi là lỗi và không báo gì) và 300001 (hết phiên, trang tự đăng xuất) giờ ghi **chưa rõ** và dừng, không ghi lỗi. Trước đây ở trang Garena các mã này bị ghi lỗi và code bị bỏ qua vĩnh viễn.
+- Captcha Tencent của trang quốc tế chỉ được tính khi đang hiện trên màn hình.
+
+Ký tự sai trong code
+
+- **Sửa lỗi của 1.0.2:** chữ trông giống chữ Latin nằm ở đầu hoặc cuối code bị cắt mất, khiến tiện ích nhập nhầm một code khác (`АBC123` với A Kirin thành `BC123`; `DFABC12З` thành `DFABC12`), tốn một lần thử. Giờ chỉ cắt emoji, dấu câu, ký hiệu ở hai đầu.
+- Code có ký tự sai không được nhập và được liệt kê dưới ô danh sách, tô màu đúng ký tự sai, kèm lý do và số dòng: chữ Kirin/Hy Lạp trông giống chữ Latin, số La Mã, ký tự toàn chiều rộng, chữ in đậm/nghiêng kiểu đặc biệt, gạch ngang dài, chữ có dấu do bộ gõ Telex/VNI, ký tự đặc biệt giữa code.
+- Nút **Sửa tự động** sửa: chữ trông giống chữ Latin, số La Mã, chữ toàn chiều rộng, chữ kiểu, gạch dài; **ký tự đặc biệt giữa code** (bỏ đi, vì 408 code đã biết không code nào có `.`, `@` hay chữ tiếng Việt); **chữ có dấu do Telex/VNI** (suy ngược phím đã gõ, kể cả phím dấu gõ muộn, so với code đã biết để chọn đúng; không khớp thì đoán theo cặp ký tự hay gặp trong code thật và ghi "đoán, cần xem lại"). Thử gõ 408 Demo Code bằng Telex: phát hiện đủ 293 code bị đổi, không nhập nhầm, sửa đúng 93% khi code đã biết và 74% khi là code mới.
+- Bấm Bắt đầu khi còn code có ký tự sai thì popup hỏi lại.
+- Không báo nhầm chữ tiếng Việt (kể cả in hoa), giá tiền, số có dấu phân cách, email.
+- Bỏ thêm ký tự vô hình hay gặp khi dán emoji (chọn kiểu emoji, khung phím số).
+- `tools/pack.mjs --check` chặn ký tự vô hình và ký tự đảo chiều chữ trong mã tiện ích. Các biểu thức trong mã viết dạng `\uXXXX` thay vì ký tự thật.
+
 ## 1.0.2
 
 Tập trung vào log: xóa, xuất, nạp và đối chiếu code.

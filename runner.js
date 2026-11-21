@@ -13,6 +13,8 @@
   const K = P.KEYS;
   const CHANNEL = "dfcode-garena-v2";
   const VERSION = chrome.runtime.getManifest().version;
+  /* Bản đang mở: "garena" hoặc "intl" (trang quốc tế, thử nghiệm). */
+  const SITE = P.siteOf(location.href) || "garena";
 
   const state = {
     running: false,
@@ -88,6 +90,8 @@
     if (loggedOut && shown(loggedOut)) return false;
     const loggedIn = document.querySelector("#logined");
     if (!loggedIn || !shown(loggedIn)) return false;
+    /* Trang quốc tế: ô UID (.state-after đầu tiên) bị ẩn khi đã đăng nhập, chỉ cần có ô nhập CDK. */
+    if (SITE === "intl") return !!document.querySelector("input#cdkey");
     const after = document.querySelector(".state-after");
     if (after && !shown(after)) return false;
     return !!document.querySelector("input.exc-input, .exc-input");
@@ -229,6 +233,7 @@
         current: "",
         wait: null,
         note: "",
+        site: SITE,
       }, extra || {});
     }
 
@@ -275,7 +280,7 @@
           if (at !== -1) list.splice(at, 1);
           await set({ [K.attempts]: list });
         }
-        const entry = P.toEntry(code, result, new Date());
+        const entry = P.toEntry(code, result, new Date(), SITE);
         await appendLog(entry);
         done++;
         if (entry) tally[entry.status]++;
@@ -319,6 +324,9 @@
     state.starting = true;
     try {
       if (!P.isRedeemUrl(location.href)) return { ok: false, reason: "Không phải trang đổi code." };
+      if (msg.site && P.normSite(msg.site) !== SITE) {
+        return { ok: false, reason: "Tab này là trang đổi code bản " + P.SITES[SITE].label + ", khác bản đang chọn trong popup." };
+      }
       const list = Array.isArray(msg.codes) ? msg.codes.slice(0, P.LIMITS.maxCodes) : [];
       const text = list.map(function (c) { return String(c == null ? "" : c).slice(0, 200); }).join("\n");
       const codes = P.analyzeCodes(text).codes;
@@ -326,7 +334,7 @@
       const now = Date.now();
       const data = await get([K.log, K.run, K.attempts]);
       if (P.isRunActive(data[K.run], now)) return { ok: false, reason: "Đang có phiên chạy ở tab hoặc cửa sổ khác." };
-      const plan = P.plan({ codes: codes, log: data[K.log], settings: settings, attempts: data[K.attempts], now: now });
+      const plan = P.plan({ codes: codes, log: data[K.log], settings: settings, attempts: data[K.attempts], now: now, site: SITE });
       if (!plan.ok) return { ok: false, reason: plan.reason, until: plan.until };
       if (!(await ensurePort())) {
         return { ok: false, reason: "Trang chưa sẵn sàng. Tải lại trang đổi code (F5) rồi thử lại." };
@@ -348,8 +356,9 @@
         current: "",
         wait: null,
         note: "Đang bắt đầu.",
+        site: SITE,
       });
-      await set({ [K.meta]: { version: VERSION, settings: settings, startedAt: new Date(state.startedAt).toISOString() } });
+      await set({ [K.meta]: { version: VERSION, site: SITE, settings: settings, startedAt: new Date(state.startedAt).toISOString() } });
       loop(plan.queue, settings, plan.skipped).catch(function () {
         state.running = false;
       });
@@ -374,7 +383,7 @@
   chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     if (!fromPopup(sender) || !msg || typeof msg.kind !== "string") return;
     if (msg.kind === "probe") {
-      sendResponse({ ok: true, loggedIn: isLoggedIn(), running: state.running, version: VERSION });
+      sendResponse({ ok: true, loggedIn: isLoggedIn(), running: state.running, version: VERSION, site: SITE });
       return;
     }
     if (msg.kind === "stop") {

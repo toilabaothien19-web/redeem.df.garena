@@ -12,7 +12,7 @@
   </head>
   <body>
     <header class="top">
-      <img class="mark" src="icons/icon48.png" alt="" width="36" height="36" />
+      <img class="mark" id="mark" src="icons/icon48.png" alt="" width="36" height="36" />
       <div class="titles">
         <h1>Nhập code Delta Force</h1>
         <p class="ver" id="ver">DF Code Garena</p>
@@ -26,6 +26,25 @@
     </section>
 
     <section class="card" aria-labelledby="codesLabel">
+      <div class="edition" role="radiogroup" aria-label="Chọn bản Delta Force">
+        <button type="button" class="seg" id="edGarena" role="radio" aria-checked="true" data-site="garena">Bản Garena</button>
+        <button type="button" class="seg" id="edIntl" role="radio" aria-checked="false" data-site="intl">
+          Bản quốc tế <em class="pill test">thử nghiệm</em>
+        </button>
+      </div>
+      <div id="editionNote" class="edition-note" data-site="garena">
+        <ul id="noteGarena">
+          <li>Trang đổi quà Garena (redeem.df.garena.sg), đăng nhập bằng tài khoản Garena.</li>
+          <li>Bản chính, đã dùng ổn định.</li>
+        </ul>
+        <ul id="noteIntl" hidden>
+          <li>Trang đổi quà quốc tế của Level Infinite (playdeltaforce.com). Đăng nhập trên trang trước (Google, Facebook, Discord…).</li>
+          <li>Code hai bản không dùng chung: trang Garena và trang quốc tế gửi code cho hai mã game khác nhau. Demo Code là code Garena nên bị tắt ở bản này.</li>
+          <li>Chỉ đổi bằng tài khoản đã đăng nhập. Không dùng cách đổi bằng UID vì cách đó cần captcha.</li>
+          <li>Chưa thử trên tài khoản thật. Gặp kết quả lạ, captcha hoặc mất đăng nhập thì tiện ích dừng và ghi chưa rõ.</li>
+          <li>Hạn mức bảo vệ tính chung cho cả hai bản. Log ghi “QT” trước lượt của bản quốc tế.</li>
+        </ul>
+      </div>
       <div class="card-head">
         <label id="codesLabel" for="codes">Danh sách code</label>
         <span id="count" class="count">0 code</span>
@@ -39,6 +58,13 @@
         placeholder="Mỗi dòng một code. Dán trực tiếp hoặc mở file .txt. Dòng bắt đầu bằng # được bỏ qua."
       ></textarea>
       <p id="parseNote" class="note" hidden></p>
+      <div id="suspects" class="suspects" role="alert" hidden>
+        <p id="suspectTitle" class="suspects-title"></p>
+        <ul id="suspectList" class="suspect-list"></ul>
+        <p id="suspectMore" class="note" hidden></p>
+        <p id="suspectHint" class="note warn" hidden></p>
+        <button type="button" id="fixSuspects" class="small" hidden>Sửa tự động</button>
+      </div>
       <div class="row tools">
         <button type="button" id="pick">Mở file .txt</button>
         <button type="button" id="demo">Demo Code</button>

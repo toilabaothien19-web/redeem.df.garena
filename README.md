@@ -4,13 +4,16 @@
 
 # DF Code Garena
 
-Tiện ích Chrome / Edge để nhập danh sách code Delta Force trên trang đổi quà chính thức của Garena. Mã nguồn để công khai, không qua bước build: file bạn đọc trên GitHub là file được cài vào trình duyệt.
+Tiện ích Chrome / Edge để nhập danh sách code Delta Force trên trang đổi quà chính thức của Garena, và từ bản 1.1.0 thêm trang đổi quà quốc tế của Level Infinite (thử nghiệm). Mã nguồn để công khai, không qua bước build: file bạn đọc trên GitHub là file được cài vào trình duyệt.
 
-Phiên bản hiện tại: **1.0.2** · [Nhật ký thay đổi](CHANGELOG.md)
+Phiên bản hiện tại: **1.1.0** · [Nhật ký thay đổi](CHANGELOG.md)
 
 Bản trước khi viết lại (trước đây đánh số 1.9.9) được đánh số lại thành **0.5.0 beta** và chỉ giữ trong lịch sử mã (tag `v0.5.0`, commit `83f3cfb`) để đối chiếu, không phát hành file zip. Hãy dùng bản mới nhất.
 
-Trang đổi code: https://redeem.df.garena.sg/vi/cdkgarena.html
+Trang đổi code:
+
+- Bản Garena: https://redeem.df.garena.sg/vi/cdkgarena.html
+- Bản quốc tế (thử nghiệm): https://www.playdeltaforce.com/vi/cdkredeem.html — xem [Bản quốc tế](#bản-quốc-tế-thử-nghiệm)
 
 ## Vì sao có tiện ích này
 
@@ -38,7 +41,7 @@ Danh sách code, log và tùy chọn chỉ nằm trong `chrome.storage.local` tr
 
 Chỉ khi tab Trung Tâm Đổi Quà đang mở, tiện ích điền code, bấm nút Đổi trên trang đó, rồi đọc câu trang và máy chủ trả về cho đúng lần bấm ấy.
 
-[inject.js](inject.js) có bọc `fetch` và `XMLHttpRequest` của trang, nhưng chỉ để đọc phản hồi của request đổi code (`RedeemCDKey`) do chính trang Garena gửi. Nó không tạo request mới và không gửi nội dung đó đi đâu khác.
+[inject.js](inject.js) có bọc `fetch` và `XMLHttpRequest` của trang, nhưng chỉ để đọc phản hồi của request đổi code (`RedeemCDKey`) do chính trang đổi quà gửi. Nó không tạo request mới và không gửi nội dung đó đi đâu khác.
 
 Tiện ích vẫn là công cụ nhập tự động trên tài khoản bạn đã đăng nhập. Garena vẫn có thể giới hạn tài khoản vì nhập quá nhanh. **Bảo vệ tài khoản** chỉ làm chậm lại, giới hạn số lần và tạm nghỉ sau chuỗi lỗi. Không có gì cam kết tài khoản không bị khóa.
 
@@ -46,7 +49,7 @@ Tiện ích vẫn là công cụ nhập tự động trên tài khoản bạn đ
 
 Cần Chrome hoặc Edge từ phiên bản 111. Không dùng được trên Chrome điện thoại.
 
-1. Tải `df-code-garena-1.0.2.zip` từ [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) của kho này. Không cài file đính kèm trong bài viết lạ, nhóm chat, hoặc kho fork chưa đối chiếu.
+1. Tải `df-code-garena-1.1.0.zip` từ [Releases](https://github.com/toilabaothien19-web/redeem.df.garena/releases) của kho này. Không cài file đính kèm trong bài viết lạ, nhóm chat, hoặc kho fork chưa đối chiếu.
 2. Đối chiếu hash như mục [Tự kiểm tra an toàn](#tự-kiểm-tra-an-toàn). Hash lệch thì xóa và không dùng.
 3. Nếu máy đã có thư mục bản cũ, xóa thư mục đó. Không giải nén đè.
 4. Giải nén. Bên trong là thư mục `df-code-garena`. Tên file zip có số phiên bản, tên thư mục thì giữ nguyên.
@@ -59,13 +62,23 @@ Cũng có thể tải mã nguồn (Code → Download ZIP hoặc `git clone`) r�
 
 ## Dùng
 
-1. Mở trang đổi code và đăng nhập Garena. Tiện ích không hỏi mật khẩu. Đang ở trang khác thì bấm **Mở trang** trên popup.
-2. Bấm biểu tượng DF. Nếu popup báo cần tải lại, bấm **Tải lại** (hoặc F5 trên trang).
+1. Mở trang đổi code và đăng nhập. Tiện ích không hỏi mật khẩu. Đang ở trang khác thì bấm **Mở trang** trên popup.
+2. Bấm biểu tượng DF. Chọn **Bản Garena** hoặc **Bản quốc tế (thử nghiệm)** ở hai nút ngay trên ô danh sách code; ghi chú bên dưới nói rõ bản đó dùng trang nào. Nếu popup báo cần tải lại, bấm **Tải lại** (hoặc F5 trên trang).
 3. Dán code, bấm **Mở file .txt**, hoặc **Demo Code** nếu chưa có danh sách. Popup cho biết nhận được bao nhiêu code, bỏ bao nhiêu code trùng và bao nhiêu dòng không nhận ra.
 4. Nên để bật **Bảo vệ tài khoản**. Ô **lần này** và nút **Bắt đầu** cho biết sẽ nhập bao nhiêu code, kèm hạn mức còn lại và giờ xong dự kiến.
 5. Bấm **Bắt đầu** (hoặc Ctrl+Enter trong ô danh sách). Đóng popup không làm dừng. Không mở hai tab đổi quà để chạy cùng lúc.
 6. Bấm **Dừng** ở bất kỳ tab nào. Đang nghỉ thì dừng ngay; đang nhập thì dừng sau code đó.
 7. Danh sách dài hơn trần mỗi lần thì bấm Bắt đầu lại sau khi hết thời gian chờ. Code đã có trong log tự được bỏ qua.
+
+### Biểu tượng trên thanh công cụ
+
+Số trên biểu tượng là số code còn lại của lần chạy; màu đậm khi đang nhập, sắc nhạt khi đang nghỉ. Màu lấy theo theme của trang [FADEX.VN](https://fadex.vn/delta-force-code):
+
+| Biểu tượng | Khi nào |
+| --- | --- |
+| Xanh lá `#0ff796` | Bản Garena. Chạy xong mà không có code nào lỗi thì giữ nguyên màu này. |
+| Xanh dương `#0079d5` | Bản quốc tế (màu mặc định của trang). |
+| Đỏ `#f7413d` | Lần chạy gần nhất có dù chỉ một code lỗi hoặc chưa rõ. Đỏ ngay từ code lỗi đầu tiên và giữ đỏ tới khi bắt đầu lần chạy mới, đổi sang bản kia, hoặc xóa log. |
 
 Để tab đổi code mở trong lúc chạy. Tab bị ẩn quá 5 phút thì Chrome có thể làm chậm bộ đếm, nên thời gian thực tế có thể dài hơn ước tính.
 
@@ -98,6 +111,25 @@ Hạn mức được đếm theo từng lần thật sự bấm Đổi, nằm tr
 - Trên dòng có nhiều chữ, chỉ chữ trông rõ là code mới được lấy (có số, bắt đầu bằng `DF`, viết hoa dài từ 8 ký tự, hoặc kiểu `TrickOrTreat`), để không tốn một lần thử cho chữ như `brick` hay `Delta`. Code nào đứng một mình trên dòng thì luôn được lấy.
 - Tối đa 1000 code và 200 KB mỗi lần.
 
+**Ký tự sai.** Code dán từ mạng hoặc gõ bằng bộ gõ tiếng Việt hay lẫn ký tự trông giống nhưng khác, làm code thành sai và tốn một lần thử. Tiện ích kiểm từng ký tự, **không nhập** code có ký tự sai, và liệt kê chúng ngay dưới ô danh sách, tô màu đúng ký tự sai kèm lý do:
+
+| Loại | Ví dụ | Sửa tự động |
+| --- | --- | --- |
+| Chữ Kirin (Nga), Hy Lạp trông giống chữ Latin | `DFАBC123` (А Kirin), `DFABC12З` (З giống số 3) | có |
+| Số La Mã | `DFⅡ2025` → `DFII2025` | có |
+| Ký tự toàn chiều rộng | `ＤＦＡＢＣ１２３` → `DFABC123` | có |
+| Chữ in đậm/nghiêng kiểu đặc biệt | `𝐃𝐅𝐀𝐁𝐂𝟏𝟐𝟑` → `DFABC123` | có |
+| Gạch ngang dài | `DF–ABC` → `DF-ABC` | có |
+| Chữ có dấu do bộ gõ Telex/VNI tự đổi | `DFƯEAPON91` → `DFWEAPON91` (Telex `w` ra `ư`), `HEDELTAFORCẺ630` → `HEDELTAFORCE3630` (VNI `e3` ra `ẻ`) | có |
+| Ký tự đặc biệt giữa code | `DF.ABC123`, `DF@ABC123` → `DFABC123` | có |
+| Chữ khác bảng chữ, không giống chữ Latin | `DFФABC123` | không: sửa tay |
+
+Code thật chỉ có chữ cái A–Z, a–z, số 0–9 và gạch dưới `_`. Trong 408 code đã biết, không code nào có dấu chấm, `@` hay chữ tiếng Việt, nên ký tự đặc biệt giữa code được bỏ đi.
+
+Chữ có dấu thì suy ngược phím đã gõ (Telex: `w`/`uw` → `ư`, `dd` → `đ`, `aa` → `â`, `as` → `á`…; VNI: `u7` → `ư`, `e3` → `ẻ`…). Một chữ có dấu có thể đến từ nhiều cách gõ, và Telex còn cho gõ phím dấu muộn (`GARENADF` gõ ra `GẢENÀD`). Vì vậy tiện ích thử mọi cách rồi **so với code đã biết** (Demo Code, log và code hợp lệ khác trong danh sách): khớp thì ghi "khớp code đã biết". Không khớp thì chọn cách giống code thật nhất, dựa trên cặp ký tự hay đi liền nhau trong các code đã biết, và ghi "đoán, cần xem lại". Khi thử gõ 408 Demo Code bằng Telex, tiện ích phát hiện đủ 293 code bị đổi, không nhập nhầm code nào, sửa đúng 93% khi code có trong danh sách đã biết và 74% khi là code mới hoàn toàn. Telex có lúc nuốt mất phím (gõ `ss` thành `s`) mà không để lại dấu, trường hợp đó không phát hiện được: an toàn nhất vẫn là tắt bộ gõ tiếng Việt khi gõ code.
+
+Nút **Sửa tự động** sửa mọi code sửa được, chỉ chừa chữ khác bảng chữ không giống chữ Latin. Code sửa bằng cách đoán được nhắc xem lại. Bấm Bắt đầu khi còn code sai thì popup hỏi lại. Chữ tiếng Việt bình thường (kể cả in hoa), giá tiền, ngày tháng, số có dấu phân cách và email trong bài viết không bị báo nhầm.
+
 ### Nhật ký
 
 - Mỗi lần nhập ghi nguyên câu trên trang và câu máy chủ, kèm mã lỗi. Token, email, liên kết và dãy số dài bị ẩn trước khi ghi.
@@ -115,6 +147,18 @@ Cập nhật tiện ích mà quên bấm tải lại thì lần mở popup đầ
 
 **Xóa log** xóa toàn bộ lượt đã ghi. Sau đó các code đó không còn được bỏ qua khi chạy lại, nên xuất log trước khi xóa. Hạn mức đã dùng không bị xóa theo.
 
+## Bản quốc tế (thử nghiệm)
+
+Chọn **Bản quốc tế (thử nghiệm)** trên popup để nhập code trên trang https://www.playdeltaforce.com/vi/cdkredeem.html của Level Infinite. Trang có nhiều ngôn ngữ; đường dẫn nào kết thúc bằng `cdkredeem.html` đều dùng được.
+
+- Đăng nhập trên trang trước (nút **Log In**: Google, Facebook, Discord, LINE, X). Tiện ích chỉ đổi bằng tài khoản đã đăng nhập.
+- Không dùng ô **UID**. Đổi bằng UID không cần đăng nhập nhưng trang bắt captcha Tencent, nên tiện ích không bấm khi trang còn ở chế độ UID.
+- Code hai bản không dùng chung. Hai trang dùng cùng máy chủ đổi code (`sg-act.playerinfinite.com`) nhưng gửi cho hai mã game khác nhau: Garena `30150`, quốc tế `29158`. Demo Code là code Garena nên bị tắt ở bản này.
+- Câu trên trang giống hệt bản Garena (cùng câu tiếng Việt, cùng mã lỗi), nên log đọc kết quả theo cùng cách. Thành công: "Đã nhận thành công! Vui lòng kiểm tra hộp thư trong game của bạn."
+- Bị giới hạn tần suất (mã 400086) thì trang chỉ báo "Lỗi mạng, vui lòng thử lại sau". Tiện ích ghi **chưa rõ** và dừng để bảo vệ tài khoản.
+- Chưa thử trên tài khoản thật. Gặp kết quả lạ, captcha hoặc mất đăng nhập thì tiện ích dừng và ghi chưa rõ; code đó sẽ được nhập lại lần sau.
+- Log ghi bản của từng lượt (`QT` trong popup và trong file log). Bỏ qua code đã có trong log chỉ tính lượt của cùng bản. Hạn mức bảo vệ tính chung cho hai bản.
+
 ## Tự kiểm tra an toàn
 
 Làm các bước này trên bản sắp cài, không chỉ đọc phần giới thiệu.
@@ -129,11 +173,11 @@ File `SHA256SUMS` nằm **trong** zip chỉ chứng minh các file khớp với 
 Hash của file zip:
 
 ```bash
-sha256sum df-code-garena-1.0.2.zip
+sha256sum df-code-garena-1.1.0.zip
 ```
 
 ```powershell
-(Get-FileHash -Algorithm SHA256 .\df-code-garena-1.0.2.zip).Hash.ToLower()
+(Get-FileHash -Algorithm SHA256 .\df-code-garena-1.1.0.zip).Hash.ToLower()
 ```
 
 Hash từng file, đứng trong thư mục `df-code-garena` vừa giải nén:
@@ -160,10 +204,10 @@ Mở [manifest.json](manifest.json). Bản này chỉ có:
 
 - `permissions`: `storage`, `activeTab`
 - không có `cookies`, không có `host_permissions`, không có `<all_urls>`
-- `content_scripts` chỉ khớp `https://redeem.df.garena.sg` và đường dẫn `cdkgarena.html`
+- `content_scripts` chỉ khớp hai trang đổi code: `https://redeem.df.garena.sg/…/cdkgarena.html` và `https://www.playdeltaforce.com/…/cdkredeem.html`
 - `homepage_url` trỏ về kho này
 
-Sau khi cài, vào `chrome://extensions`, bấm **Chi tiết**. Quyền trang web phải là trang đổi code Garena, không phải toàn bộ các trang bạn mở.
+Sau khi cài, vào `chrome://extensions`, bấm **Chi tiết**. Quyền trang web phải là hai trang đổi code trên, không phải toàn bộ các trang bạn mở.
 
 ### 3. Tìm trong mã nguồn những lệnh đáng ngờ
 
@@ -185,26 +229,26 @@ grep -RInE "fetch|XMLHttpRequest|https?://" --include='*.js' --include='*.html' 
 Kết quả hợp lệ:
 
 - chỗ bọc `fetch` và `XMLHttpRequest` trong [inject.js](inject.js);
-- địa chỉ `https://redeem.df.garena.sg/...cdkgarena.html` trong [manifest.json](manifest.json) và [parser.js](parser.js) (để nhận đúng trang và cho nút **Mở trang**);
+- địa chỉ `https://redeem.df.garena.sg/...cdkgarena.html` và `https://www.playdeltaforce.com/...cdkredeem.html` trong [manifest.json](manifest.json) và [parser.js](parser.js) (để nhận đúng trang và cho nút **Mở trang**);
 - địa chỉ kho `https://github.com/toilabaothien19-web/redeem.df.garena` ở `homepage_url`.
 
-Không có địa chỉ máy chủ thứ ba. Nếu bản bạn tải có URL lạ, domain lạ, hoặc `document.cookie`, đó không phải bản này. Công cụ `node tools/pack.mjs --check` làm đúng các bước rà soát này một cách tự động.
+Không có địa chỉ máy chủ thứ ba. Nếu bản bạn tải có URL lạ, domain lạ, hoặc `document.cookie`, đó không phải bản này. Công cụ `node tools/pack.mjs --check` làm đúng các bước rà soát này một cách tự động, và còn chặn ký tự vô hình hoặc ký tự đảo chiều chữ trong mã (loại ký tự có thể dùng để giấu mã khỏi mắt người đọc).
 
 ### 4. Xem Network trên trình duyệt
 
 - Chuột phải vào popup tiện ích, chọn **Kiểm tra** (Inspect). Thẻ **Network** phải trống. Popup không được gọi ra ngoài.
-- Mở trang đổi code, bấm F12, thẻ **Network**, rồi bấm **Bắt đầu**. Request đổi code phải do trang `redeem.df.garena.sg` gửi, cột Initiator là trang đó. Không có request nào xuất phát từ `chrome-extension://` đi tới domain khác.
-- Trang Garena tự tải script của chính họ (đo lường, cookie banner). Đó không phải do tiện ích thêm vào. Nhìn cột Initiator để phân biệt.
+- Mở trang đổi code, bấm F12, thẻ **Network**, rồi bấm **Bắt đầu**. Request đổi code (`RedeemCDKey`, tới `sg-act.playerinfinite.com`) phải do trang đổi code gửi (`redeem.df.garena.sg` hoặc `www.playdeltaforce.com`), cột Initiator là trang đó. Không có request nào xuất phát từ `chrome-extension://` đi tới domain khác.
+- Trang đổi code tự tải script của chính họ (đo lường, cookie banner, đăng nhập). Đó không phải do tiện ích thêm vào. Nhìn cột Initiator để phân biệt.
 
 ### 5. Đọc đúng file ngắn
 
 | File | Chạy ở đâu | Việc cần thấy |
 | --- | --- | --- |
 | [manifest.json](manifest.json) | | Quyền hẹp, CSP `connect-src 'none'` |
-| [sw.js](sw.js) | service worker | Chỉ hiện hoặc xóa số trên biểu tượng, dọn phiên bị bỏ dở |
+| [sw.js](sw.js) | service worker | Chỉ đổi màu biểu tượng, hiện hoặc xóa số trên biểu tượng, dọn phiên bị bỏ dở |
 | [parser.js](parser.js) | mọi nơi | Logic thuần: đọc code, hạn mức, đọc kết quả, file log. Không DOM, không mạng |
-| [inject.js](inject.js) | trang Garena (MAIN) | Điền code, bấm Đổi, chỉ đọc phản hồi `RedeemCDKey`, trả kết quả qua `MessagePort` |
-| [runner.js](runner.js) | trang Garena (tách biệt) | Điều phối từng code, chỉ lưu log và trạng thái vào `chrome.storage.local` |
+| [inject.js](inject.js) | trang đổi code (MAIN) | Điền code, bấm Đổi, chỉ đọc phản hồi `RedeemCDKey`, trả kết quả qua `MessagePort` |
+| [runner.js](runner.js) | trang đổi code (tách biệt) | Điều phối từng code, chỉ lưu log và trạng thái vào `chrome.storage.local` |
 | [popup.js](popup.js) | popup | Giao diện. Không có lệnh mạng |
 | [demo-codes.js](demo-codes.js) | popup | Danh sách Demo Code, tạo từ [demo-codes.txt](demo-codes.txt) |
 
@@ -232,7 +276,7 @@ Ra phiên bản mới:
 
 ## Giới hạn
 
-- Chỉ chạy trên `https://redeem.df.garena.sg` khi tab đổi code đang mở.
+- Chỉ chạy trên hai trang đổi code (`redeem.df.garena.sg` và, ở bản thử nghiệm, `www.playdeltaforce.com`) khi tab đổi code đang mở.
 - Không cam kết tài khoản không bị khóa. Bảo vệ tài khoản chỉ nhập chậm hơn, giới hạn số lần, và tạm nghỉ sau chuỗi lỗi.
-- Câu trong log là câu trang Garena trả về lúc nhập. Trang đổi câu hoặc đổi giao diện thì log, hoặc cả việc nhập, có thể đổi theo.
+- Câu trong log là câu trang đổi code trả về lúc nhập. Trang đổi câu hoặc đổi giao diện thì log, hoặc cả việc nhập, có thể đổi theo.
 - Mã nguồn công khai để kiểm tra, không phải giấy phép dùng mã này trong một tiện ích khác rồi gắn thêm thu thập dữ liệu.

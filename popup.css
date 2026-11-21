@@ -7,15 +7,24 @@
   --line: #2c3729;
   --fg: #e8efe4;
   --muted: #98a690;
-  --accent: #00fd9c;
-  --accent-soft: rgba(0, 253, 156, 0.12);
+  /* Màu theo theme trang FADEX.VN: xanh lá Delta Force (.is-df). Bản quốc tế dùng xanh dương mặc định của trang. */
+  --accent: #0ff796;
+  --accent-light: #7bfbc5;
+  --accent-soft: rgba(15, 247, 150, 0.12);
   --ink: #032016;
-  --ok: #00fd9c;
+  --ok: #0ff796;
   --danger: #ff7363;
   --danger-soft: rgba(255, 115, 99, 0.12);
   --warn: #f4bf4f;
   --warn-soft: rgba(244, 191, 79, 0.12);
   --radius: 10px;
+}
+
+body[data-site="intl"] {
+  --accent: #0079d5;
+  --accent-light: #4da1e2;
+  --accent-soft: rgba(0, 121, 213, 0.16);
+  --ink: #ffffff;
 }
 
 * { box-sizing: border-box; }
@@ -97,9 +106,9 @@ h2 {
   background: var(--muted);
 }
 
-.status[data-tone="ready"] { border-color: rgba(0, 253, 156, 0.35); }
+.status[data-tone="ready"] { border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
 .status[data-tone="ready"] .dot { background: var(--ok); }
-.status[data-tone="run"] { border-color: rgba(0, 253, 156, 0.5); background: var(--accent-soft); }
+.status[data-tone="run"] { border-color: color-mix(in srgb, var(--accent) 50%, transparent); background: var(--accent-soft); }
 .status[data-tone="run"] .dot { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
 .status[data-tone="warn"] { border-color: rgba(244, 191, 79, 0.4); background: var(--warn-soft); }
 .status[data-tone="warn"] .dot { background: var(--warn); }
@@ -171,6 +180,107 @@ button:focus-visible {
 .note.bad { color: var(--danger); }
 .note.ok { color: var(--ok); }
 
+/* ---------- Chọn bản ---------- */
+
+.edition {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg);
+}
+
+.seg {
+  min-height: 32px;
+  padding: 0 6px;
+  border-color: transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.seg:hover:not(:disabled) { background: var(--surface-2); color: var(--fg); }
+.seg[aria-checked="true"],
+.seg[aria-checked="true"]:hover:not(:disabled) { background: var(--accent); color: var(--ink); }
+.seg:disabled { opacity: 0.6; }
+.seg[aria-checked="true"]:disabled { opacity: 1; }
+
+.pill.test { margin-left: 2px; background: var(--warn-soft); color: var(--warn); }
+.seg[aria-checked="true"] .pill.test { background: rgba(255, 255, 255, 0.2); color: inherit; }
+
+.edition-note {
+  margin: 6px 0 8px;
+  padding: 6px 8px 6px 4px;
+  border-left: 2px solid var(--accent);
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.edition-note[data-site="intl"] { background: var(--accent-soft); border-radius: 0 6px 6px 0; }
+.edition-note ul { margin: 0; padding-left: 18px; }
+.edition-note li + li { margin-top: 2px; }
+
+.log .where {
+  margin-right: 4px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* ---------- Cảnh báo ký tự sai ---------- */
+
+.suspects {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(244, 191, 79, 0.45);
+  border-radius: 8px;
+  background: var(--warn-soft);
+}
+
+.suspects-title { margin: 0; color: var(--warn); font-size: 12px; font-weight: 600; }
+
+.suspect-list {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.suspect-list li { font-size: 11.5px; line-height: 1.45; }
+
+.suspect-list .code {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.suspect-list mark {
+  padding: 0 1px;
+  border-radius: 3px;
+  background: var(--danger);
+  color: #1a0000;
+  font-weight: 700;
+}
+
+.suspect-list .fix { color: var(--ok); }
+.suspect-list .tag-ok { color: var(--ok); font-size: 10.5px; }
+.suspect-list .tag-guess { color: var(--warn); font-size: 10.5px; }
+.suspect-list .why { display: block; color: var(--muted); }
+.suspects button { margin-top: 8px; }
+
 /* ---------- Nút ---------- */
 
 .row {
@@ -204,7 +314,8 @@ button.primary {
   font-weight: 700;
 }
 
-button.primary:hover:not(:disabled) { background: #3dffb3; }
+button.primary:hover:not(:disabled) { background: var(--accent-light); }
+body[data-site="intl"] button.primary:hover:not(:disabled) { background: #1a88dc; }
 
 #stop { min-height: 40px; min-width: 76px; }
 
@@ -429,7 +540,7 @@ button.small {
 }
 
 .log li.fresh { animation: rise-in 0.34s ease; }
-.log li.ok.fresh { --glow: rgba(0, 253, 156, 0.5); animation: rise-in 0.34s ease, result-glow 0.7s ease; }
+.log li.ok.fresh { --glow: rgba(15, 247, 150, 0.5); animation: rise-in 0.34s ease, result-glow 0.7s ease; }
 .log li.bad.fresh { --glow: rgba(255, 115, 99, 0.45); animation: rise-in 0.34s ease, result-glow 0.7s ease; }
 
 /* ---------- Chân trang và hộp hỏi ---------- */

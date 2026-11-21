@@ -1,8 +1,9 @@
-DF Code Garena 1.0.2
+DF Code Garena 1.1.0
 ====================
 
 Tiện ích chỉ nhập code khi tab Trung Tâm Đổi Quà đang mở:
-https://redeem.df.garena.sg/vi/cdkgarena.html
+- Bản Garena: https://redeem.df.garena.sg/vi/cdkgarena.html
+- Bản quốc tế (thử nghiệm): https://www.playdeltaforce.com/vi/cdkredeem.html
 
 Chỉ tải từ https://github.com/toilabaothien19-web/redeem.df.garena
 
@@ -18,15 +19,22 @@ Cài trên máy tính (Chrome hoặc Edge 111 trở lên)
    File SHA256SUMS trong zip chỉ chứng minh các file khớp nhau; hãy so nó với file SHA256SUMS trên GitHub.
 
 Dùng
-1. Mở trang đổi code và đăng nhập Garena. Tiện ích không hỏi mật khẩu.
-2. Bấm biểu tượng DF. Nếu popup báo cần tải lại, bấm Tải lại hoặc F5 trên trang.
+1. Mở trang đổi code và đăng nhập. Tiện ích không hỏi mật khẩu.
+2. Bấm biểu tượng DF. Chọn Bản Garena hoặc Bản quốc tế (thử nghiệm) ở hai nút trên ô danh sách code.
+   Nếu popup báo cần tải lại, bấm Tải lại hoặc F5 trên trang.
 3. Dán code hoặc bấm Mở file .txt. Mỗi dòng một code. Dòng bắt đầu bằng # được bỏ qua.
+   Code có ký tự sai (chữ Nga/Hy Lạp trông giống chữ Latin, số La Mã, chữ toàn chiều rộng, chữ có dấu
+   do bộ gõ Telex/VNI, ký tự đặc biệt) được báo dưới ô danh sách và không được nhập. Bấm Sửa tự động
+   để sửa. Code có dấu được so với code đã biết; không khớp thì là đoán, nên xem lại trước khi chạy.
+   An toàn nhất vẫn là tắt bộ gõ tiếng Việt khi gõ code.
    Demo Code là danh sách mẫu, có thể đã hết hạn. Mỗi code sai là một lần thử trên tài khoản của bạn.
 4. Nên để bật Bảo vệ tài khoản: nghỉ ngẫu nhiên 20–30 giây, tối đa 30 code mỗi lần bấm,
    30 code mỗi 60 phút, 60 code mỗi 24 giờ, 5 lỗi liên tiếp thì tự nghỉ 30–60 giây rồi nhập tiếp.
    Tắt bảo vệ thì tối đa 100 code mỗi lần và có hỏi lại. Không thể cam kết tài khoản không bị khóa.
 5. Bấm Bắt đầu. Nút ghi rõ lần này nhập bao nhiêu code. Có thể đóng popup, việc nhập vẫn chạy.
    Để tab đổi code mở trong lúc chạy. Không mở hai tab đổi quà để chạy cùng lúc.
+   Biểu tượng: xanh lá là bản Garena, xanh dương là bản quốc tế, số trên biểu tượng là số code còn lại.
+   Biểu tượng chuyển đỏ khi có dù chỉ một code lỗi hoặc chưa rõ, và giữ đỏ tới lần chạy sau hoặc khi xóa log.
 6. Bấm Dừng ở bất kỳ tab nào để dừng. Đang nghỉ thì dừng ngay, đang nhập thì dừng sau code đó.
 7. Nhật ký ghi nguyên câu trên trang và câu máy chủ, kèm mã số. Lọc theo Dùng được, Lỗi, Chưa rõ.
    Chưa rõ nghĩa là không đọc được kết quả, code chưa được gửi, hoặc trang báo lỗi tạm thời
@@ -35,6 +43,13 @@ Dùng
    không còn được bỏ qua khi chạy lại, nên xuất log trước khi xóa.
 9. Bấm Tải log lên để nạp lại file đó (tối đa 2 MB). Popup cho biết bao nhiêu code trong danh sách
    đã có trong log. Lần chạy sau bỏ qua code đã thành công và code lỗi.
+
+Bản quốc tế (thử nghiệm)
+- Trang đổi quà của Level Infinite. Đăng nhập trên trang trước (Log In: Google, Facebook, Discord...).
+- Chỉ đổi bằng tài khoản đã đăng nhập. Không dùng ô UID, vì cách đó cần captcha.
+- Code hai bản không dùng chung (hai mã game khác nhau). Demo Code là code Garena nên bị tắt ở bản này.
+- Chưa thử trên tài khoản thật. Gặp kết quả lạ, captcha hoặc mất đăng nhập thì tiện ích dừng và ghi chưa rõ.
+- Hạn mức bảo vệ tính chung cho hai bản. Log ghi "QT" trước lượt của bản quốc tế.
 
 Bảo mật
 - Mã tiện ích được viết riêng cho việc này. Không nhúng thư viện hay mã nguồn bên ngoài.

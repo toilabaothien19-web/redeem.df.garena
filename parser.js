@@ -18,6 +18,28 @@
   const REDEEM_PAGE = "https://redeem.df.garena.sg/vi/cdkgarena.html";
   const REDEEM_PATH = /^\/(?:[^/]+\/)?cdkgarena\.html$/i;
 
+  /* Hai trang đổi code: Garena (mặc định) và trang quốc tế của Level Infinite (thử nghiệm). */
+  const SITES = Object.freeze({
+    garena: Object.freeze({
+      id: "garena",
+      label: "Garena",
+      host: "redeem.df.garena.sg",
+      page: "https://redeem.df.garena.sg/vi/cdkgarena.html",
+      path: /^\/(?:[^/]+\/)?cdkgarena\.html$/i,
+    }),
+    intl: Object.freeze({
+      id: "intl",
+      label: "quốc tế",
+      host: "www.playdeltaforce.com",
+      page: "https://www.playdeltaforce.com/vi/cdkredeem.html",
+      path: /^\/(?:[^/]+\/)?cdkredeem\.html$/i,
+    }),
+  });
+
+  function normSite(site) {
+    return site === "intl" ? "intl" : "garena";
+  }
+
   const KEYS = Object.freeze({
     draft: "dfcode.draft",
     gap: "dfcode.gap",
@@ -29,6 +51,7 @@
     run: "dfcode.run",
     attempts: "dfcode.attempts",
     stop: "dfcode.stop",
+    edition: "dfcode.edition",
   });
   /* Khóa của bản cũ, xóa khi gặp. */
   const LEGACY_KEYS = Object.freeze(["dfcode.restUntil", "dfcode.skipOk"]);
@@ -142,10 +165,341 @@
     return /[a-z]/.test(word) && /[A-Z]/.test(word.slice(1));
   }
 
-  /* Cắt ký tự không thuộc code ở hai đầu mỗi từ: ngoặc kép, dấu câu, dấu sao, emoji… ("DFABC123🔥", "**DFABC123**"). */
-  const EDGE_JUNK = /^[^A-Za-z0-9_-]+|[^A-Za-z0-9_-]+$/g;
+  /* Cắt ở hai đầu mỗi từ những ký tự không phải chữ hay số: ngoặc kép, dấu câu, dấu sao, emoji, số mũ, số khoanh tròn…
+   * ("DFABC123🔥", "**DFABC123**", "①DFABC123"). Chữ và số của bảng chữ khác (Kirin, Hy Lạp, toàn chiều rộng, số La Mã)
+   * KHÔNG bị cắt: cắt đi sẽ biến "АBC123" (A Kirin) thành một code khác là "BC123". Chúng được kiểm ở dưới. */
+  const EDGE_JUNK = /^[^\p{L}\p{Nd}\p{Nl}\p{M}_-]+|[^\p{L}\p{Nd}\p{Nl}\p{M}_-]+$/gu;
 
-  function codesInSegment(segment, strict) {
+  /* ---------- Phát hiện ký tự sai trong code ---------- */
+
+  /* Chữ của bảng chữ khác trông giống hệt chữ Latin (dán từ mạng hay gặp). */
+  const HOMOGLYPHS = {
+    "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O",
+    "Р": "P", "С": "C", "Т": "T", "У": "Y", "Х": "X", "Ѕ": "S", "І": "I",
+    "Ј": "J", "З": "3", "а": "a", "е": "e", "о": "o", "р": "p", "с": "c",
+    "у": "y", "х": "x", "ѕ": "s", "і": "i", "ј": "j", "ԁ": "d", "ԛ": "q",
+    "ԝ": "w", "һ": "h", "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H",
+    "Ι": "I", "Κ": "K", "Μ": "M", "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T",
+    "Υ": "Y", "Χ": "X", "ο": "o", "ν": "v", "ı": "i",
+  };
+  const DASHES = /^[‐-―−⁃﹘﹣]$/;
+
+  function scriptOf(ch) {
+    const c = ch.codePointAt(0);
+    if (c >= 0x0400 && c <= 0x052F) return "chữ Kirin (Nga)";
+    if (c >= 0x0370 && c <= 0x03FF) return "chữ Hy Lạp";
+    return "chữ của bảng chữ khác";
+  }
+
+  /* Dấu thanh tiếng Việt và phím tạo ra nó: Telex (s f r x j), VNI (1 2 3 4 5). */
+  const TONE_TELEX = { "\u0301": "s", "\u0300": "f", "\u0309": "r", "\u0303": "x", "\u0323": "j" };
+  const TONE_VNI = { "\u0301": "1", "\u0300": "2", "\u0309": "3", "\u0303": "4", "\u0323": "5" };
+  const COMBINING = /[\u0300-\u036F]/g;
+
+  function baseLetter(ch) {
+    if (ch === "đ") return "d";
+    if (ch === "Đ") return "D";
+    const base = ch.normalize("NFD").replace(COMBINING, "");
+    return /^[A-Za-z]$/.test(base) ? base : "";
+  }
+
+  /* Các phím có thể đã gõ ra một chữ có dấu khi bộ gõ tiếng Việt đang bật, cách hay gặp nhất đứng đầu.
+   * Telex: "w" ra "ư", "uw" ra "ư", "aa" ra "â", "dd" ra "đ", "as" ra "á"… VNI: "u7" ra "ư", "e3" ra "ẻ"…
+   * upper: các chữ khác trong code viết hoa nên phím dấu cũng viết hoa. vniFirst: ngay sau là chữ số. */
+  function retypeAccent(ch, upper, vniFirst) {
+    const k = function (x) { return upper ? x.toUpperCase() : x; };
+    if (ch === "đ" || ch === "Đ") {
+      const d = ch === "Đ" ? "D" : "d";
+      const pairs = [{ body: d + k("d"), tone: "" }, { body: d + "9", tone: "" }];
+      return vniFirst ? pairs.reverse() : pairs;
+    }
+    const nfd = ch.normalize("NFD");
+    const base = nfd.charAt(0);
+    if (!/^[A-Za-z]$/.test(base)) return [];
+    const marks = nfd.slice(1);
+    let mod = "";
+    let modV = "";
+    let bare = "";
+    if (marks.indexOf("\u0302") !== -1) {
+      mod = k(base.toLowerCase());
+      modV = "6";
+    } else if (marks.indexOf("\u0306") !== -1) {
+      mod = k("w");
+      modV = "8";
+    } else if (marks.indexOf("\u031B") !== -1) {
+      mod = k("w");
+      modV = "7";
+      if (/u/i.test(base)) bare = base === "U" ? "W" : "w";
+    }
+    let tone = "";
+    let toneV = "";
+    for (let i = 0; i < marks.length; i++) {
+      if (TONE_TELEX[marks[i]]) {
+        tone = k(TONE_TELEX[marks[i]]);
+        toneV = TONE_VNI[marks[i]];
+      }
+    }
+    const telex = bare ? [{ body: bare, tone: tone }, { body: base + mod, tone: tone }] : [{ body: base + mod, tone: tone }];
+    const vni = [{ body: base + modV, tone: toneV }];
+    return vniFirst ? vni.concat(telex) : telex.concat(vni);
+  }
+
+  /* Xét từng ký tự không thuộc code trong một từ: loại lỗi, chữ thay thế, và có sửa tự động được không. */
+  function inspectWord(word) {
+    const chars = Array.from(word);
+    const ascii = chars.filter(function (c) { return /^[A-Za-z]$/.test(c); });
+    const uppers = ascii.filter(function (c) { return c === c.toUpperCase(); }).length;
+    const mostlyUpper = uppers * 2 > ascii.length;
+    let fixed = "";
+    let fixable = true;
+    const issues = [];
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      if (/^[A-Za-z0-9_-]$/.test(ch)) {
+        fixed += ch;
+        continue;
+      }
+      let to = HOMOGLYPHS[ch] || "";
+      let kind = to ? "homoglyph" : "";
+      let options = null;
+      if (!kind && DASHES.test(ch)) {
+        to = "-";
+        kind = "dash";
+      }
+      if (!kind && !/\p{No}/u.test(ch)) {
+        const n = ch.normalize("NFKC");
+        if (n !== ch && /^[A-Za-z0-9_-]+$/.test(n)) {
+          const c = ch.codePointAt(0);
+          to = n;
+          kind = c >= 0x2160 && c <= 0x2188 ? "roman" : c >= 0xFF00 && c <= 0xFFEF ? "fullwidth" : "styled";
+        }
+      }
+      if (!kind && baseLetter(ch)) {
+        /* Phím dấu viết hoa khi chính chữ đó viết hoa và code chủ yếu viết hoa ("DFLUÍHERE" → "IS");
+         * "TrickỎTreat" → "Or". Biến thể khác hoa/thường vẫn được thử khi so với code đã biết. */
+        const upperKey = ch !== ch.toLowerCase() && mostlyUpper;
+        const vniFirst = /^[0-9]$/.test(chars[i + 1] || "");
+        options = retypeAccent(ch, upperKey, vniFirst).concat(retypeAccent(ch, !upperKey, vniFirst));
+        options = options.filter(function (x, n) {
+          return options.findIndex(function (y) { return y.body === x.body && y.tone === x.tone; }) === n;
+        });
+        to = options.length ? options[0].body + options[0].tone : baseLetter(ch);
+        kind = "accent";
+      }
+      /* Code thật chỉ có chữ, số và "_": dấu câu, ký hiệu giữa code (". @ / ·"…) bỏ đi được. */
+      if (!kind && /[\p{P}\p{S}]/u.test(ch)) kind = "special";
+      /* Chữ hay số của bảng chữ khác mà không giống chữ Latin: không đoán được, phải sửa tay. */
+      if (!kind) {
+        kind = "foreign";
+        fixable = false;
+      }
+      fixed += to;
+      const issue = { ch: ch, kind: kind, to: to, at: i };
+      if (options) issue.options = options;
+      issues.push(issue);
+    }
+    return { fixed: fixed, fixable: fixable, issues: issues, chars: chars, asciiLetters: ascii.length };
+  }
+
+  /* Mọi cách viết lại một từ có chữ có dấu (tối đa 256), để so với code đã biết. Với mỗi chữ có dấu, thử từng cách
+   * gõ (Telex, VNI, hoa/thường) và từng vị trí phím dấu thanh: ngay sau chữ đó, hoặc muộn hơn tối đa 4 chữ cái trong
+   * cùng cụm, vì Telex vẫn đặt dấu lên nguyên âm trước đó ("GARENADF" gõ ra "GẢENÀD": phím F nằm sau chữ D). */
+  function retypeCandidates(r) {
+    const accents = r.issues.filter(function (x) { return x.options && x.options.length; });
+    if (!accents.length) return [{ text: r.fixed, prior: 0 }];
+    const byAt = new Map();
+    r.issues.forEach(function (x) { byAt.set(x.at, x); });
+    const choices = accents.map(function (x) {
+      let room = 0;
+      for (let i = x.at + 1; i < r.chars.length && room < 4 && /^[A-Za-z]$/.test(r.chars[i]); i++) room++;
+      const list = [];
+      x.options.forEach(function (o) {
+        const last = o.tone ? room : 0;
+        const vni = /[0-9]/.test(o.body + o.tone);
+        for (let k = 0; k <= last; k++) {
+          const prior = Math.log(vni ? 0.1 : 0.9) + (k === 0 ? Math.log(0.6) : Math.log(0.4 / last));
+          list.push({ body: o.body, tone: o.tone, after: k, prior: prior });
+        }
+      });
+      return list;
+    });
+    const out = [];
+    const pick = new Array(accents.length).fill(0);
+    while (out.length < 256) {
+      const chosen = new Map();
+      accents.forEach(function (x, a) { chosen.set(x.at, choices[a][pick[a]]); });
+      let text = "";
+      let waiting = [];
+      for (let i = 0; i < r.chars.length; i++) {
+        const issue = byAt.get(i);
+        const c = chosen.get(i);
+        text += c ? c.body : issue ? issue.to : r.chars[i];
+        if (!c && /^[A-Za-z]$/.test(r.chars[i])) {
+          waiting = waiting.map(function (w) { return { tone: w.tone, left: w.left - 1 }; });
+        }
+        if (c && c.tone) waiting.push({ tone: c.tone, left: c.after });
+        waiting = waiting.filter(function (w) {
+          if (w.left > 0) return true;
+          text += w.tone;
+          return false;
+        });
+      }
+      waiting.forEach(function (w) { text += w.tone; });
+      let prior = 0;
+      chosen.forEach(function (c) { prior += c.prior; });
+      if (!out.some(function (o) { return o.text === text; })) out.push({ text: text, prior: prior });
+      let a = accents.length - 1;
+      while (a >= 0 && ++pick[a] >= choices[a].length) pick[a--] = 0;
+      if (a < 0) break;
+    }
+    return out;
+  }
+
+  /* Khi không khớp code đã biết nào, chọn cách viết lại giống code thật nhất: học từ các code đã biết xem cặp ký tự nào
+   * hay đi liền nhau (vd "DF" rất hay gặp, "FD" thì hiếm). Mô hình được nhớ theo từng tập code. */
+  const bigramCache = new WeakMap();
+  function bigramModel(known) {
+    if (!known || typeof known !== "object") return null;
+    if (bigramCache.has(known)) return bigramCache.get(known);
+    const pairs = new Map();
+    const singles = new Map();
+    let codes = 0;
+    known.forEach(function (code) {
+      if (!isCodeToken(code)) return;
+      codes++;
+      const t = "^" + code.toLowerCase() + "$";
+      for (let i = 0; i + 1 < t.length; i++) {
+        const ab = t.charAt(i) + t.charAt(i + 1);
+        pairs.set(ab, (pairs.get(ab) || 0) + 1);
+        singles.set(t.charAt(i), (singles.get(t.charAt(i)) || 0) + 1);
+      }
+    });
+    const model = codes >= 20 ? { pairs: pairs, singles: singles } : null;
+    bigramCache.set(known, model);
+    return model;
+  }
+
+  function bigramScore(model, text) {
+    const t = "^" + text.toLowerCase() + "$";
+    let score = 0;
+    for (let i = 0; i + 1 < t.length; i++) {
+      const ab = t.charAt(i) + t.charAt(i + 1);
+      score += Math.log(((model.pairs.get(ab) || 0) + 0.5) / ((model.singles.get(t.charAt(i)) || 0) + 20));
+    }
+    return score;
+  }
+
+  function letterCount(text) {
+    const m = text.match(/[A-Za-z]/g);
+    return m ? m.length : 0;
+  }
+
+  /* Một từ không phải code hợp lệ có phải là code bị gõ hoặc dán sai ký tự không.
+   * strict: dòng có nhiều chữ. known: các code đã biết (Demo Code, log, code hợp lệ khác) để chọn cách sửa đúng. */
+  function suspectOf(word, strict, known) {
+    if (isCodeToken(word)) return null;
+    const r = inspectWord(word);
+    if (!r.issues.length) return null;
+    let fixed = r.fixed;
+    let matched = false;
+    if (known && known.size) {
+      const candidates = retypeCandidates(r);
+      for (let i = 0; i < candidates.length; i++) {
+        if (known.has(candidates[i].text)) {
+          fixed = candidates[i].text;
+          matched = true;
+          break;
+        }
+      }
+      const model = !matched && candidates.length > 1 ? bigramModel(known) : null;
+      if (model) {
+        let best = -Infinity;
+        candidates.forEach(function (c) {
+          if (!isCodeToken(c.text)) return;
+          const score = bigramScore(model, c.text) + c.prior;
+          if (score > best) {
+            best = score;
+            fixed = c.text;
+          }
+        });
+      }
+    }
+    if (!isCodeToken(fixed) || letterCount(fixed) < 2) return null;
+    const textLike = r.issues.some(function (x) { return /^(?:accent|special|foreign)$/.test(x.kind); });
+    if (textLike && !matched) {
+      /* Chữ tiếng Việt, giá tiền, số có dấu phân cách ("Hết", "10.000đ", "1,5") không phải code gõ sai. */
+      if (r.asciiLetters < 2) return null;
+      const betweenDigits = r.issues.some(function (x) {
+        return x.kind === "special" && /^[0-9]$/.test(r.chars[x.at - 1] || "") && /^[0-9]$/.test(r.chars[x.at + 1] || "");
+      });
+      if (betweenDigits) return null;
+    }
+    /* Ký tự trông giống hệt chữ Latin ở dòng chỉ có một từ thì gần như chắc là code. Chữ có dấu, ký tự đặc biệt
+     * thì phải khớp code đã biết hoặc trông rõ là code, để không báo nhầm chữ tiếng Việt bình thường. */
+    const lookalikeOnly = r.issues.every(function (x) { return /^(?:homoglyph|roman|fullwidth|styled|dash)$/.test(x.kind); });
+    /* Xét "giống code" trên chữ gốc đã bỏ dấu, không trên bản đoán: cách gõ VNI chèn chữ số ("BIỆT" → "BIE65T")
+     * sẽ làm chữ tiếng Việt in hoa trông như code. */
+    let plain = "";
+    for (let i = 0; i < r.chars.length; i++) {
+      const issue = r.issues.find(function (x) { return x.at === i; });
+      plain += !issue ? r.chars[i] : issue.kind === "accent" ? baseLetter(r.chars[i]) : issue.to;
+    }
+    const likely = matched || (lookalikeOnly && !strict ? fixed.length >= 4 : looksLikeCode(lookalikeOnly ? fixed : plain));
+    if (!likely) return null;
+    const guess = !matched && r.issues.some(function (x) { return x.kind === "accent" && x.options && x.options.length > 1; });
+    return { raw: word, fixed: fixed, fixable: r.fixable, matched: matched, guess: guess, issues: r.issues };
+  }
+
+  const ISSUE_TEXT = {
+    homoglyph: function (i) { return scriptOf(i.ch) + " “" + i.ch + "” trông giống “" + i.to + "” nhưng khác ký tự"; },
+    roman: function (i) { return "số La Mã “" + i.ch + "”, cần gõ bằng chữ “" + i.to + "”"; },
+    fullwidth: function (i) { return "ký tự toàn chiều rộng “" + i.ch + "”, cần là “" + i.to + "”"; },
+    styled: function (i) { return "chữ kiểu “" + i.ch + "” (in đậm/nghiêng đặc biệt), cần là “" + i.to + "”"; },
+    dash: function (i) { return "gạch ngang dài “" + i.ch + "”, cần là gạch nối “-”"; },
+    accent: function (i) { return "chữ có dấu “" + i.ch + "” do bộ gõ tiếng Việt (Telex/VNI) tự đổi khi gõ, gõ lại là “" + i.to + "”"; },
+    special: function (i) { return "ký tự “" + i.ch + "” không có trong code, bỏ đi"; },
+    foreign: function (i) { return "chữ “" + i.ch + "” không có trong code, cần sửa tay"; },
+  };
+
+  function describeIssue(issue) {
+    const f = ISSUE_TEXT[issue && issue.kind];
+    return f ? f(issue) : "";
+  }
+
+  const GROUP_TEXT = {
+    homoglyph: "chữ của bảng chữ khác (Kirin, Hy Lạp…) trông giống chữ Latin nhưng khác ký tự",
+    roman: "số La Mã, cần gõ bằng chữ cái thường",
+    fullwidth: "ký tự toàn chiều rộng, cần là chữ và số thường",
+    styled: "chữ kiểu in đậm/nghiêng đặc biệt, cần là chữ thường",
+    dash: "gạch ngang dài, cần là gạch nối “-”",
+    accent: "chữ có dấu do bộ gõ tiếng Việt (Telex/VNI) tự đổi khi gõ",
+    special: "ký tự không có trong code, bỏ đi",
+    foreign: "chữ không có trong code, cần sửa tay",
+  };
+
+  /* Mô tả gọn một code có ký tự sai: gộp theo loại lỗi, mỗi loại kể tối đa 4 ký tự. */
+  function describeSuspect(sus) {
+    const groups = new Map();
+    const issues = sus && Array.isArray(sus.issues) ? sus.issues : [];
+    for (let i = 0; i < issues.length; i++) {
+      const kind = issues[i].kind;
+      if (!groups.has(kind)) groups.set(kind, []);
+      const list = groups.get(kind);
+      if (!list.some(function (x) { return x.ch === issues[i].ch; })) list.push(issues[i]);
+    }
+    const parts = [];
+    groups.forEach(function (list, kind) {
+      if (list.length === 1) {
+        parts.push(describeIssue(list[0]));
+        return;
+      }
+      const chars = list.slice(0, 4).map(function (x) { return "“" + x.ch + "”"; }).join(", ") + (list.length > 4 ? "…" : "");
+      parts.push((GROUP_TEXT[kind] || "ký tự lạ") + " (" + chars + ")");
+    });
+    return parts.join("; ");
+  }
+
+  function codesInSegment(segment, strict, sink) {
     const out = [];
     const parts = segment.split(/[,;|\t，；、]+|\s+[-–—]+\s+/);
     for (let p = 0; p < parts.length; p++) {
@@ -156,18 +510,20 @@
         if (word) clean.push(word);
       }
       if (!clean.length) continue;
-      if (!strict && clean.length === 1) {
-        if (isCodeToken(clean[0])) out.push(clean[0]);
-        continue;
-      }
+      const single = !strict && clean.length === 1;
       for (let c = 0; c < clean.length; c++) {
-        if (looksLikeCode(clean[c])) out.push(clean[c]);
+        const word = clean[c];
+        if (single ? isCodeToken(word) : looksLikeCode(word)) {
+          out.push(word);
+        } else if (sink && /[^A-Za-z0-9_-]/.test(word)) {
+          sink.push({ word: word, strict: !single });
+        }
       }
     }
     return out;
   }
 
-  function codesInLine(line) {
+  function codesInLine(line, sink) {
     /* Phần trong ngoặc thường là ghi chú ("(100 brick)", "(hết hạn 30/11)") nhưng cũng có khi là code ("(DFABC123)"):
      * đọc riêng theo luật chặt. Giới hạn 120 ký tự để dòng toàn dấu mở ngoặc không làm treo popup. */
     const notes = [];
@@ -183,33 +539,41 @@
     const segments = text.split(/[:：]/);
     const out = [];
     for (let i = 0; i < segments.length; i++) {
-      const found = codesInSegment(segments[i], i < segments.length - 1);
+      const found = codesInSegment(segments[i], i < segments.length - 1, sink);
       for (let f = 0; f < found.length; f++) out.push(found[f]);
     }
     for (let n = 0; n < notes.length; n++) {
-      const found = codesInSegment(notes[n], true);
+      const found = codesInSegment(notes[n], true, sink);
       for (let f = 0; f < found.length; f++) out.push(found[f]);
     }
     return out;
   }
 
-  /* Trả về code theo đúng thứ tự, bỏ trùng, kèm số dòng không nhận ra. */
-  function analyzeCodes(text) {
+  /* Ký tự vô hình: khoảng trắng rỗng, nối chữ, chọn kiểu emoji, khung phím số. */
+  const INVISIBLE = /[\u200B-\u200D\u2060\uFEFF\uFE00-\uFE0F\u20E3]/g;
+
+  /* Trả về code theo đúng thứ tự, bỏ trùng, kèm số dòng không nhận ra và các code có ký tự sai (không được nhập).
+   * options.known: code đã biết (Demo Code, log) để chọn đúng cách sửa chữ có dấu. Code hợp lệ trong chính danh sách
+   * cũng được dùng, nên phải đọc hết danh sách rồi mới xét các từ nghi ngờ. */
+  function analyzeCodes(text, options) {
     let raw = String(text == null ? "" : text);
     if (raw.length > LIMITS.maxText) raw = raw.slice(0, LIMITS.maxText);
-    raw = raw.replace(/[\u200B-\u200D\u2060\uFEFF]/g, "");
+    raw = raw.replace(INVISIBLE, "");
     const seen = new Set();
     const codes = [];
+    const pending = [];
+    const emptyLines = [];
     let duplicates = 0;
-    let ignored = 0;
     let truncated = false;
     const lines = raw.split(/\r\n|\r|\n/);
     for (let i = 0; i < lines.length && !truncated; i++) {
       const line = lines[i].trim();
       if (!line || line.charAt(0) === "#" || line.indexOf("//") === 0) continue;
-      const found = codesInLine(line);
+      const sink = [];
+      const found = codesInLine(line, sink);
+      for (let s = 0; s < sink.length; s++) pending.push({ word: sink[s].word, strict: sink[s].strict, line: i + 1 });
       if (!found.length) {
-        ignored++;
+        emptyLines.push(i + 1);
         continue;
       }
       for (let f = 0; f < found.length; f++) {
@@ -226,7 +590,37 @@
         codes.push(code);
       }
     }
-    return { codes: codes, duplicates: duplicates, ignored: ignored, truncated: truncated };
+    const known = new Set(codes);
+    const extra = options && options.known;
+    if (extra && typeof extra.forEach === "function") extra.forEach(function (c) { if (isCodeToken(c)) known.add(c); });
+    const suspects = [];
+    const verdict = new Map();
+    const suspectLines = new Set();
+    for (let p = 0; p < pending.length; p++) {
+      const item = pending[p];
+      if (!verdict.has(item.word)) {
+        const sus = suspectOf(item.word, item.strict, known);
+        verdict.set(item.word, !!sus);
+        if (sus) {
+          sus.line = item.line;
+          suspects.push(sus);
+        }
+      }
+      /* Dòng nào có code sai (kể cả code sai lặp lại) thì không tính là dòng không nhận ra. */
+      if (verdict.get(item.word)) suspectLines.add(item.line);
+    }
+    const ignored = emptyLines.filter(function (n) { return !suspectLines.has(n); }).length;
+    return { codes: codes, duplicates: duplicates, ignored: ignored, truncated: truncated, suspects: suspects };
+  }
+
+  /* Thay các code sửa tự động được (ký tự trông giống hệt chữ Latin) trong văn bản bằng bản đã sửa. */
+  function fixSuspects(text, suspects) {
+    /* Bộ đọc tìm code trên văn bản đã bỏ ký tự vô hình, nên phải bỏ chúng ở đây trước khi thay. */
+    let out = String(text == null ? "" : text).replace(INVISIBLE, "");
+    const list = (Array.isArray(suspects) ? suspects : []).filter(function (s) { return s && s.fixable && s.raw && s.fixed; });
+    list.sort(function (a, b) { return b.raw.length - a.raw.length; });
+    for (let i = 0; i < list.length; i++) out = out.split(list[i].raw).join(list[i].fixed);
+    return out;
   }
 
   function parseCodes(text) {
@@ -415,12 +809,17 @@
 
   /* ---------- Kế hoạch một lần bấm Bắt đầu ---------- */
 
-  function settledCodes(log) {
+  /* Lượt log thuộc bản nào (log cũ không ghi bản là của Garena). site rỗng: mọi bản. */
+  function onSite(e, site) {
+    return !site || normSite(e && e.site) === normSite(site);
+  }
+
+  function settledCodes(log, site) {
     const done = new Set();
     const list = Array.isArray(log) ? log : [];
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
-      if (e && (e.status === "ok" || e.status === "error") && isCodeToken(e.code)) done.add(e.code);
+      if (e && (e.status === "ok" || e.status === "error") && isCodeToken(e.code) && onSite(e, site)) done.add(e.code);
     }
     return done;
   }
@@ -431,12 +830,13 @@
     const codes = Array.isArray(opts.codes) ? opts.codes : [];
     const s = normalizeSettings(opts.settings);
     const p = profileFor(s.protect);
-    const done = s.skipLogged ? settledCodes(opts.log) : new Set();
+    const site = opts.site || "";
+    const done = s.skipLogged ? settledCodes(opts.log, site) : new Set();
     /* Code chưa từng có trong log nhập trước; code đã có (vd từng ghi chưa rõ) xếp xuống cuối,
      * để một code cứ gặp lỗi tạm thời không chặn các code mới ở mỗi lần chạy. */
     const seen = new Set();
     const logList = Array.isArray(opts.log) ? opts.log : [];
-    for (let i = 0; i < logList.length; i++) if (logList[i] && isCodeToken(logList[i].code)) seen.add(logList[i].code);
+    for (let i = 0; i < logList.length; i++) if (logList[i] && isCodeToken(logList[i].code) && onSite(logList[i], site)) seen.add(logList[i].code);
     const pending = codes.filter(function (c) { return !done.has(c); });
     const fresh = pending.filter(function (c) { return !seen.has(c); }).concat(pending.filter(function (c) { return seen.has(c); }));
     const g = gate(opts.attempts, s.protect, now);
@@ -539,6 +939,11 @@
     return isAccountRisk(value) || TRANSIENT_TEXT.test(value) || TRANSIENT_CODE_SUFFIX.test(value);
   }
 
+  /* Cả hai trang đổi code (cùng máy chủ sg-act.playerinfinite.com) không coi 601008, 503601 là lỗi và không báo gì;
+   * 300001 là hết phiên đăng nhập (trang tự đăng xuất rồi tải lại).
+   * Không rõ nghĩa nên ghi "chưa rõ": không tính là lỗi, lần sau vẫn nhập lại. */
+  const SILENT_CODES = [601008, 503601, 300001];
+
   /* Mã số và câu chữ mâu thuẫn nhau thì ghi "chưa xác định", không đoán. */
   function describeApi(raw) {
     if (!raw || typeof raw !== "object") return { ok: false, status: "unknown", serverCode: null, detail: "", httpStatus: 0 };
@@ -564,7 +969,8 @@
     const failed = looksFailed(exact);
     const success = looksOk(exact);
     let status = "unknown";
-    if (serverCode === 0 && failed) status = "unknown";
+    if (SILENT_CODES.indexOf(serverCode) !== -1) status = "unknown";
+    else if (serverCode === 0 && failed) status = "unknown";
     else if (serverCode === 0) status = "ok";
     else if (serverCode !== null && success) status = "unknown";
     else if (serverCode !== null) status = "error";
@@ -588,7 +994,7 @@
   }
 
   /* Đổi kết quả thô từ trang thành một dòng log. */
-  function toEntry(code, result, now) {
+  function toEntry(code, result, now, site) {
     if (!isCodeToken(code)) return null;
     const r = result && typeof result === "object" ? result : {};
     let status = "unknown";
@@ -619,6 +1025,7 @@
       status: status,
       detail: sanitizeText(detail),
       serverCode: serverCode,
+      site: normSite(site),
     };
   }
 
@@ -698,6 +1105,7 @@
       status: status,
       detail: detail || (status === "ok" ? "Dùng được (từ log)." : status === "unknown" ? UNKNOWN_TEXT : "Lỗi (từ log)."),
       serverCode: typeof e.serverCode === "number" && Number.isFinite(e.serverCode) ? e.serverCode : null,
+      site: normSite(e.site),
     };
   }
 
@@ -760,8 +1168,8 @@
   }
 
   /* Đối chiếu danh sách code với log: mỗi code theo trạng thái tốt nhất trong log, hoặc chưa có. */
-  function overlap(codes, log) {
-    const best = bestByCode(log);
+  function overlap(codes, log, site) {
+    const best = bestByCode((Array.isArray(log) ? log : []).filter(function (e) { return e && onSite(e, site); }));
     const out = { ok: 0, error: 0, unknown: 0, fresh: 0 };
     const list = Array.isArray(codes) ? codes : [];
     for (let i = 0; i < list.length; i++) {
@@ -775,16 +1183,6 @@
   function formatLog(entries, meta) {
     const list = Array.isArray(entries) ? entries.filter(Boolean) : [];
     const info = meta || {};
-    const best = bestByCode(list);
-    const ok = [];
-    const bad = [];
-    const wait = [];
-    best.forEach(function (e) {
-      const st = normStatus(e.status);
-      if (st === "ok") ok.push(e);
-      else if (st === "error") bad.push(e);
-      else wait.push(e);
-    });
     const count = tally(list);
     const lines = [];
     lines.push("DF Code Garena — nhật ký đổi code");
@@ -793,37 +1191,65 @@
     if (info.settings) lines.push("Chế độ: " + describePace(info.settings));
     lines.push("Tổng: " + count.all + " lượt, " + count.ok + " dùng được, " + count.error + " lỗi, " + count.unknown + " chưa rõ");
     lines.push("");
-    lines.push("=== DÙNG ĐƯỢC (" + ok.length + ") ===");
-    if (!ok.length) lines.push("(không có)");
-    for (let a = 0; a < ok.length; a++) lines.push(ok[a].code);
-    lines.push("");
-    lines.push("=== LỖI (" + bad.length + ") ===");
-    if (!bad.length) lines.push("(không có)");
-    for (let b = 0; b < bad.length; b++) lines.push(bad[b].code + "\t" + sanitizeText(bad[b].detail));
-    lines.push("");
-    lines.push("=== CHƯA RÕ (" + wait.length + ") — sẽ nhập lại ở lần chạy sau ===");
-    if (!wait.length) lines.push("(không có)");
-    for (let w = 0; w < wait.length; w++) lines.push(wait[w].code + "\t" + sanitizeText(wait[w].detail));
-    lines.push("");
+    /* Mỗi bản một bộ mục tóm tắt. Mục của bản quốc tế có chữ "QUỐC TẾ —" ở đầu, lượt ở CHI TIẾT có "QT" trước giờ. */
+    const intlList = list.filter(function (e) { return normSite(e.site) === "intl"; });
+    const garenaList = list.filter(function (e) { return normSite(e.site) !== "intl"; });
+    const groups = [{ prefix: "", list: garenaList }];
+    if (intlList.length) groups.push({ prefix: "QUỐC TẾ — ", list: intlList });
+    for (let g = 0; g < groups.length; g++) {
+      const ok = [];
+      const bad = [];
+      const wait = [];
+      bestByCode(groups[g].list).forEach(function (e) {
+        const st = normStatus(e.status);
+        if (st === "ok") ok.push(e);
+        else if (st === "error") bad.push(e);
+        else wait.push(e);
+      });
+      const pre = groups[g].prefix;
+      lines.push("=== " + pre + "DÙNG ĐƯỢC (" + ok.length + ") ===");
+      if (!ok.length) lines.push("(không có)");
+      for (let a = 0; a < ok.length; a++) lines.push(ok[a].code);
+      lines.push("");
+      lines.push("=== " + pre + "LỖI (" + bad.length + ") ===");
+      if (!bad.length) lines.push("(không có)");
+      for (let b = 0; b < bad.length; b++) lines.push(bad[b].code + "\t" + sanitizeText(bad[b].detail));
+      lines.push("");
+      lines.push("=== " + pre + "CHƯA RÕ (" + wait.length + ") — sẽ nhập lại ở lần chạy sau ===");
+      if (!wait.length) lines.push("(không có)");
+      for (let w = 0; w < wait.length; w++) lines.push(wait[w].code + "\t" + sanitizeText(wait[w].detail));
+      lines.push("");
+    }
     lines.push("=== CHI TIẾT ===");
     if (!list.length) lines.push("(chưa có lượt nhập nào)");
     for (let n = 0; n < list.length; n++) {
       const e = list[n];
       const status = normStatus(e.status);
       const tag = status === "ok" ? "OK" : status === "unknown" ? "CHƯA" : "LỖI";
-      lines.push("[" + tag + "] " + (entryTime(e) || "—") + "  " + e.code + "  —  " + sanitizeText(e.detail));
+      const where = normSite(e.site) === "intl" ? "QT " : "";
+      lines.push("[" + tag + "] " + where + (entryTime(e) || "—") + "  " + e.code + "  —  " + sanitizeText(e.detail));
     }
     lines.push("");
     return lines.join("\n");
   }
 
+  const INTL_SECTION = /^(?:QUỐC TẾ|QUOC TE)\s*[—-]\s*/i;
+
+  /* Tên mục trong file log: loại mục và bản (mục của bản quốc tế bắt đầu bằng "QUỐC TẾ —"). */
   function sectionOf(line) {
-    if (/^===\s*(?:DÙNG ĐƯỢC|DUNG DUOC)/i.test(line)) return "ok";
-    if (/^===\s*(?:LỖI|LOI)/i.test(line)) return "error";
-    if (/^===\s*(?:CHI TIẾT|CHI TIET)/i.test(line)) return "detail";
-    if (/^===\s*(?:CHƯA RÕ|CHUA RO)/i.test(line)) return "unknown";
-    if (/^===/.test(line)) return "other";
-    return "";
+    if (!/^===/.test(line)) return null;
+    let rest = line.replace(/^===\s*/, "");
+    let site = "garena";
+    if (INTL_SECTION.test(rest)) {
+      site = "intl";
+      rest = rest.replace(INTL_SECTION, "");
+    }
+    let kind = "other";
+    if (/^(?:DÙNG ĐƯỢC|DUNG DUOC)/i.test(rest)) kind = "ok";
+    else if (/^(?:LỖI|LOI)/i.test(rest)) kind = "error";
+    else if (/^(?:CHI TIẾT|CHI TIET)/i.test(rest)) kind = "detail";
+    else if (/^(?:CHƯA RÕ|CHUA RO)/i.test(rest)) kind = "unknown";
+    return { kind: kind, site: site };
   }
 
   const DETAIL_RE = /^\[(OK|LỖI|LOI|ERROR|CHƯA|CHUA)\]\s*(.*?)\s{2,}([A-Za-z0-9_-]{4,80})\s+[—-](?:\s+(.*))?$/i;
@@ -834,6 +1260,7 @@
     if (raw.length > LIMITS.maxLogText) raw = raw.slice(0, LIMITS.maxLogText);
     const lines = raw.split(/\r\n|\r|\n/);
     let section = "";
+    let sectionSite = "garena";
     const fromDetail = [];
     const fromSections = [];
     for (let i = 0; i < lines.length; i++) {
@@ -841,7 +1268,8 @@
       if (!line || line.length > 700 || line.charAt(0) === "#") continue;
       const next = sectionOf(line);
       if (next) {
-        section = next;
+        section = next.kind;
+        sectionSite = next.site;
         continue;
       }
       if (/^\((?:không có|khong co|chưa có lượt nhập nào|chua co luot nhap nao)\)$/i.test(line)) continue;
@@ -849,19 +1277,25 @@
         const m = line.match(DETAIL_RE);
         if (!m) continue;
         const tag = m[1].toUpperCase();
-        const time = m[2].trim();
+        let time = m[2].trim();
+        let site = "garena";
+        if (/^QT(?:\s|$)/.test(time)) {
+          site = "intl";
+          time = time.slice(2).trim();
+        }
         fromDetail.push({
+          site: site,
           atText: time === "—" || time === "-" ? "" : time,
           code: m[3],
           status: tag === "OK" ? "ok" : tag === "CHƯA" || tag === "CHUA" ? "unknown" : "error",
           detail: m[4] || "",
         });
       } else if (section === "ok") {
-        if (isCodeToken(line)) fromSections.push({ code: line, status: "ok", detail: "Dùng được (từ log)." });
+        if (isCodeToken(line)) fromSections.push({ code: line, status: "ok", detail: "Dùng được (từ log).", site: sectionSite });
       } else if (section === "error" || section === "unknown") {
         const bits = line.indexOf("\t") === -1 ? line.split(/\s{2,}/) : line.split("\t");
         const code = bits[0].trim();
-        if (isCodeToken(code)) fromSections.push({ code: code, status: section, detail: bits.slice(1).join(" ") });
+        if (isCodeToken(code)) fromSections.push({ code: code, status: section, detail: bits.slice(1).join(" "), site: sectionSite });
       }
     }
     const out = [];
@@ -869,13 +1303,14 @@
     for (let d = 0; d < fromDetail.length; d++) {
       const e = normalizeEntry(fromDetail[d]);
       if (!e) continue;
-      known.add(e.code + "|" + e.status);
+      known.add(e.site + "|" + e.code + "|" + e.status);
       out.push(e);
     }
+    /* Code chỉ có ở phần tóm tắt (vd phần CHI TIẾT bị cắt) mới được thêm. */
     for (let s = 0; s < fromSections.length; s++) {
       const e = normalizeEntry(fromSections[s]);
-      if (!e || known.has(e.code + "|" + e.status)) continue;
-      known.add(e.code + "|" + e.status);
+      if (!e || known.has(e.site + "|" + e.code + "|" + e.status)) continue;
+      known.add(e.site + "|" + e.code + "|" + e.status);
       out.push(e);
     }
     return out;
@@ -892,7 +1327,7 @@
       for (let i = 0; i < list.length; i++) {
         const e = normalizeEntry(list[i]);
         if (!e) continue;
-        const key = e.code + "|" + e.status + "|" + entryTime(e);
+        const key = e.site + "|" + e.code + "|" + e.status + "|" + entryTime(e);
         if (keys.has(key)) continue;
         keys.add(key);
         out.push(e);
@@ -924,19 +1359,62 @@
     return t - (Number(run.updatedAt) || 0) < LIMITS.staleMs;
   }
 
-  function isRedeemUrl(url) {
+  /* Màu biểu tượng theo theme của trang FADEX.VN: xanh lá Delta Force (bản Garena), xanh dương mặc định
+   * của trang (bản quốc tế), đỏ báo lỗi (phiên có code lỗi). light là sắc nhạt, dùng khi đang nghỉ. */
+  const LOOKS = Object.freeze({
+    garena: Object.freeze({ accent: "#0ff796", light: "#7bfbc5", text: "#000000", icon: "" }),
+    intl: Object.freeze({ accent: "#0079d5", light: "#4da1e2", text: "#ffffff", icon: "-intl" }),
+    red: Object.freeze({ accent: "#f7413d", light: "#ffb4b1", text: "#000000", icon: "-red" }),
+  });
+
+  /* Biểu tượng nên mang màu nào. Đang chạy: theo bản của phiên; không chạy: theo bản đang chọn.
+   * Phiên gần nhất của bản đó có dù chỉ một code lỗi hoặc chưa rõ thì đỏ, tới khi bắt đầu phiên mới hoặc xóa log. */
+  function iconLook(run, edition, now) {
+    const active = isRunActive(run, now);
+    const site = active ? normSite(run.site) : normSite(edition);
+    if (run && typeof run === "object" && run.phase && run.phase !== "idle" && normSite(run.site) === site) {
+      const t = run.tally && typeof run.tally === "object" ? run.tally : {};
+      if ((Number(t.error) || 0) + (Number(t.unknown) || 0) > 0) return "red";
+    }
+    return site;
+  }
+
+  function iconPaths(look) {
+    const suffix = (LOOKS[look] || LOOKS.garena).icon;
+    return { 16: "icons/icon16" + suffix + ".png", 48: "icons/icon48" + suffix + ".png", 128: "icons/icon128" + suffix + ".png" };
+  }
+
+  /* Trang đổi code nào ("garena" hoặc "intl"), hoặc "" nếu không phải trang đổi code. */
+  function siteOf(url) {
     try {
       const u = new URL(String(url || ""));
-      return u.protocol === "https:" && u.hostname === REDEEM_HOST && REDEEM_PATH.test(u.pathname);
+      if (u.protocol !== "https:") return "";
+      const ids = Object.keys(SITES);
+      for (let i = 0; i < ids.length; i++) {
+        const site = SITES[ids[i]];
+        if (u.hostname === site.host && site.path.test(u.pathname)) return site.id;
+      }
+      return "";
     } catch (e) {
-      return false;
+      return "";
     }
+  }
+
+  function isRedeemUrl(url) {
+    return !!siteOf(url);
   }
 
   return Object.freeze({
     REDEEM_HOST: REDEEM_HOST,
     REDEEM_PAGE: REDEEM_PAGE,
     REDEEM_PATH: REDEEM_PATH,
+    SITES: SITES,
+    LOOKS: LOOKS,
+    iconLook: iconLook,
+    iconPaths: iconPaths,
+    normSite: normSite,
+    siteOf: siteOf,
+    onSite: onSite,
     KEYS: KEYS,
     LEGACY_KEYS: LEGACY_KEYS,
     LIMITS: LIMITS,
@@ -953,6 +1431,10 @@
     sanitizeText: sanitizeText,
     isCodeToken: isCodeToken,
     looksLikeCode: looksLikeCode,
+    inspectWord: inspectWord,
+    describeIssue: describeIssue,
+    describeSuspect: describeSuspect,
+    fixSuspects: fixSuspects,
     analyzeCodes: analyzeCodes,
     parseCodes: parseCodes,
     clampGap: clampGap,

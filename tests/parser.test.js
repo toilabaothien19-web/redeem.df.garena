@@ -580,3 +580,272 @@ test("sửa log lưu từ bản trước, chỉ báo thay đổi khi thật sự
   assert.equal(P.migrateLog([]).changed, false);
   assert.equal(P.migrateLog(undefined).changed, false);
 });
+
+/* ---------- Phát hiện ký tự sai ---------- */
+
+test("không cắt mất chữ giống chữ Latin ở đầu hay cuối code rồi nhập nhầm code khác", () => {
+  for (const text of ["АBC123", "DFABC12З", "ＤFABC123", "DFABC12Ⅲ"]) {
+    const a = P.analyzeCodes(text);
+    assert.deepEqual(a.codes, [], text);
+    assert.equal(a.suspects.length, 1, text);
+  }
+});
+
+test("phát hiện và sửa từng loại ký tự sai", () => {
+  const cases = [
+    ["DFАBC123", "DFABC123", true, "homoglyph"],
+    ["GIVEMЕTHAT", "GIVEMETHAT", true, "homoglyph"],
+    ["TrickOrTrеat", "TrickOrTreat", true, "homoglyph"],
+    ["DFΑBC123", "DFABC123", true, "homoglyph"],
+    ["DFⅡ2025", "DFII2025", true, "roman"],
+    ["ＤＦＡＢＣ１２３", "DFABC123", true, "fullwidth"],
+    ["\u{1D403}\u{1D405}\u{1D400}\u{1D401}\u{1D402}\u{1D7CF}\u{1D7D0}\u{1D7D1}", "DFABC123", true, "styled"],
+    ["DF–ABC123", "DF-ABC123", true, "dash"],
+    ["DFƯEAPON91", "DFWEAPON91", true, "accent"],
+    ["DFĐABC123", "DFDDABC123", true, "accent"],
+    ["DF.ABC123", "DFABC123", true, "special"],
+    ["DF@ABC123", "DFABC123", true, "special"],
+    ["DFФABC123", "DFABC123", false, "foreign"],
+  ];
+  for (const [text, fixed, fixable, kind] of cases) {
+    const a = P.analyzeCodes(text);
+    assert.deepEqual(a.codes, [], text);
+    assert.equal(a.suspects.length, 1, text);
+    const s = a.suspects[0];
+    assert.equal(s.raw, text);
+    assert.equal(s.fixed, fixed, text);
+    assert.equal(s.fixable, fixable, text);
+    assert.ok(s.issues.some((i) => i.kind === kind), text);
+    assert.ok(P.describeSuspect(s).length > 10, text);
+    assert.equal(s.line, 1);
+  }
+});
+
+test("không báo nhầm câu tiếng Việt, giá tiền, ngày tháng, email, chữ Nga thật", () => {
+  const text = [
+    "Xin chào các bạn, code mới hôm nay đây!",
+    "Giá 10.000đ, hạn 30/11/2026",
+    "Không",
+    "Liên hệ email@gmail.com",
+    "Привет мир",
+    "Phần thưởng: 100 brick + skin",
+    "DFABC123 ❤\uFE0F",
+    "1\uFE0F\u20E3 DFKEY456",
+    "① DFNUM789",
+  ].join("\n");
+  const a = P.analyzeCodes(text);
+  assert.deepEqual(a.suspects, []);
+  assert.deepEqual(a.codes, ["DFABC123", "DFKEY456", "DFNUM789"]);
+});
+
+test("dòng có code sai không bị tính là dòng không nhận ra; code sai trùng chỉ báo một lần", () => {
+  const a = P.analyzeCodes("DFАBC123\nDFАBC123\nxin chào\nDFOK1234");
+  assert.deepEqual(a.codes, ["DFOK1234"]);
+  assert.equal(a.suspects.length, 1);
+  assert.equal(a.ignored, 1);
+});
+
+test("sửa tự động mọi code sửa được, giữ nguyên chữ không giống chữ Latin", () => {
+  const text = "DFАBC123\nDFƯEAPON91\nＤＦ１２３４\nDFOK1234";
+  const a = P.analyzeCodes(text);
+  assert.equal(a.suspects.length, 3);
+  const fixed = P.fixSuspects(text, a.suspects);
+  assert.equal(fixed, "DFABC123\nDFWEAPON91\nDF1234\nDFOK1234");
+  const b = P.analyzeCodes(fixed);
+  assert.deepEqual(b.codes, ["DFABC123", "DFWEAPON91", "DF1234", "DFOK1234"]);
+  assert.equal(b.suspects.length, 0);
+  // Chữ không giống chữ Latin (Ф) thì không tự sửa
+  const c = P.analyzeCodes("DFФABC123");
+  assert.equal(c.suspects[0].fixable, false);
+  assert.equal(P.fixSuspects("DFФABC123", c.suspects), "DFФABC123");
+});
+
+test("Demo Code không có code nào bị báo ký tự sai", () => {
+  const fs = require("node:fs");
+  const demo = fs.readFileSync(require("node:path").join(__dirname, "..", "demo-codes.txt"), "utf8");
+  const a = P.analyzeCodes(demo);
+  assert.deepEqual(a.suspects, []);
+  assert.equal(a.codes.length, demo.split(/\r?\n/).filter((l) => l.trim()).length);
+});
+
+test("phát hiện ký tự sai vẫn nhanh với văn bản dài toàn chữ lạ", () => {
+  const t = Date.now();
+  P.analyzeCodes(("Привет DFАBC123 ＤＦ１２３ ").repeat(5000));
+  assert.ok(Date.now() - t < 2000);
+});
+
+test("sửa tự động cả code có ký tự vô hình chen giữa", () => {
+  const text = "DF\u0410\uFE0FBC\u200B123";
+  const a = P.analyzeCodes(text);
+  assert.equal(a.suspects.length, 1);
+  const fixed = P.fixSuspects(text, a.suspects);
+  assert.equal(fixed, "DFABC123");
+  assert.deepEqual(P.analyzeCodes(fixed).codes, ["DFABC123"]);
+});
+
+test("Telex/VNI: so với code đã biết để sửa đúng, kể cả phím dấu gõ muộn", () => {
+  const known = new Set(["WELCOMETODF", "DFLUISHERE", "TrickOrTreat", "HEDELTAFORCE3630", "GARENADFNY2501E034", "DFSL1983"]);
+  const cases = [
+    [String.fromCodePoint(0x1AF) + "ELCOMETODF", "WELCOMETODF"],
+    ["DFLU" + String.fromCodePoint(0xCD) + "HERE", "DFLUISHERE"],
+    ["Trick" + String.fromCodePoint(0x1ECE) + "Treat", "TrickOrTreat"],
+    ["HEDELTAFORC" + String.fromCodePoint(0x1EBA) + "630", "HEDELTAFORCE3630"],
+    ["G" + String.fromCodePoint(0x1EA2) + "EN" + String.fromCodePoint(0xC0) + "DNY2501E034", "GARENADFNY2501E034"],
+    ["DFSL.1983", "DFSL1983"],
+  ];
+  for (const [typed, want] of cases) {
+    const s = P.analyzeCodes(typed, { known }).suspects[0];
+    assert.equal(s.fixed, want, typed);
+    assert.equal(s.matched, true, typed);
+    assert.equal(s.guess, false, typed);
+  }
+  const g = P.analyzeCodes("DFA" + String.fromCodePoint(0x110) + "ON77", { known }).suspects[0];
+  assert.equal(g.fixed, "DFADDON77");
+  assert.equal(g.guess, true);
+});
+
+test("không báo nhầm câu tiếng Việt, giá tiền, số có dấu phân cách khi bật sửa Telex", () => {
+  const known = new Set(["DFWEAPON91", "DFSL1983"]);
+  const noise = ["Không", "Chào các bạn", "Giá 10.000đ", "Hết hạn 30/11", "email@gmail.com", "Tết 2026", "1.000.000VNĐ", "50.000VND", "Phiên bản v1.2.3", "Thưởng 100 brick, 1,5 triệu", "HÔM NAY CÓ CODE MỚI"];
+  for (const text of noise) assert.deepEqual(P.analyzeCodes(text, { known }).suspects, [], text);
+});
+
+/* ---------- Hai bản: Garena và quốc tế ---------- */
+
+test("nhận đúng trang đổi code của từng bản", () => {
+  assert.equal(P.siteOf("https://redeem.df.garena.sg/vi/cdkgarena.html"), "garena");
+  assert.equal(P.siteOf("https://redeem.df.garena.sg/cdkgarena.html?x=1"), "garena");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/vi/cdkredeem.html"), "intl");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/en/cdkredeem.html#top"), "intl");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/cdkredeem.html"), "intl");
+  assert.equal(P.siteOf("http://www.playdeltaforce.com/en/cdkredeem.html"), "");
+  assert.equal(P.siteOf("https://playdeltaforce.com/en/cdkredeem.html"), "");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/en/index.html"), "");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/en/cdkgarena.html"), "");
+  assert.equal(P.siteOf("https://redeem.df.garena.sg/vi/cdkredeem.html"), "");
+  assert.equal(P.siteOf("https://evil.example/www.playdeltaforce.com/en/cdkredeem.html"), "");
+  assert.equal(P.siteOf("không phải url"), "");
+  assert.ok(P.isRedeemUrl("https://www.playdeltaforce.com/vi/cdkredeem.html"));
+  assert.equal(P.siteOf(P.SITES.garena.page), "garena");
+  assert.equal(P.siteOf(P.SITES.intl.page), "intl");
+  assert.equal(P.normSite("intl"), "intl");
+  assert.equal(P.normSite(undefined), "garena");
+  assert.equal(P.normSite("lạ"), "garena");
+});
+
+test("lượt log ghi bản; log cũ không ghi bản là của Garena", () => {
+  const a = P.toEntry("DFINTL01", { source: "api", raw: { code: 0, msg: "ok" } }, new Date(NOW), "intl");
+  assert.equal(a.site, "intl");
+  const b = P.toEntry("DFGRNA01", { source: "api", raw: { code: 0, msg: "ok" } }, new Date(NOW));
+  assert.equal(b.site, "garena");
+  assert.equal(P.normalizeEntry({ code: "DFOLD001", status: "ok", at: new Date(NOW).toISOString() }).site, "garena");
+  assert.equal(P.normalizeEntry({ code: "DFOLD001", status: "ok", site: "intl" }).site, "intl");
+});
+
+test("bỏ qua code đã có trong log chỉ tính trong cùng một bản", () => {
+  const log = [
+    { code: "DFSAME01", status: "error", at: new Date(NOW - HOUR).toISOString(), detail: "x" },
+    { code: "DFSAME02", status: "ok", at: new Date(NOW - HOUR).toISOString(), detail: "x", site: "intl" },
+  ];
+  const codes = ["DFSAME01", "DFSAME02", "DFNEW001"];
+  const g = P.plan({ codes: codes, log: log, settings: { protect: true }, attempts: [], now: NOW, site: "garena" });
+  assert.deepEqual(g.queue, ["DFSAME02", "DFNEW001"]);
+  const i = P.plan({ codes: codes, log: log, settings: { protect: true }, attempts: [], now: NOW, site: "intl" });
+  assert.deepEqual(i.queue, ["DFSAME01", "DFNEW001"]);
+  assert.deepEqual(P.overlap(codes, log, "garena"), { ok: 0, error: 1, unknown: 0, fresh: 2 });
+  assert.deepEqual(P.overlap(codes, log, "intl"), { ok: 1, error: 0, unknown: 0, fresh: 2 });
+  /* Không ghi bản: như trước, tính mọi lượt. */
+  assert.deepEqual(P.overlap(codes, log), { ok: 1, error: 1, unknown: 0, fresh: 1 });
+});
+
+test("mã trang không coi là lỗi (601008, 503601) và hết phiên (300001) ghi chưa rõ ở cả hai bản", () => {
+  for (const code of [601008, 503601, 300001]) {
+    assert.equal(P.describeApi({ code: code, msg: "" }).status, "unknown");
+    for (const site of ["garena", "intl"]) {
+      const e = P.toEntry("DFSILENT1", { source: "api", raw: { code: code } }, new Date(NOW), site);
+      assert.equal(e.status, "unknown");
+      assert.equal(P.judge(e, { source: "api", raw: { code: code } }, {}, { protect: true }).action, "stop");
+    }
+  }
+  assert.equal(P.describeApi({ code: 400068, msg: "CDK đã đạt giới hạn đổi." }).status, "error");
+});
+
+test("câu của trang quốc tế: thành công, lỗi, lỗi mạng (giới hạn tần suất)", () => {
+  const ok = P.toEntry("DFINTL02", { source: "api", raw: { code: 0, msg: "ok", screen: "Đã nhận thành công! Vui lòng kiểm tra hộp thư trong game của bạn." } }, new Date(NOW), "intl");
+  assert.equal(ok.status, "ok");
+  const bad = P.toEntry("DFINTL03", { source: "api", raw: { code: 400054, screen: "CDKey đã nhập không hợp lệ. Vui lòng thử lại." } }, new Date(NOW), "intl");
+  assert.equal(bad.status, "error");
+  const raw = { code: 400086, msg: "frequency limit", screen: "Lỗi mạng, vui lòng thử lại sau" };
+  const busy = P.toEntry("DFINTL04", { source: "api", raw: raw }, new Date(NOW), "intl");
+  assert.equal(busy.status, "unknown");
+  assert.equal(P.judge(busy, { source: "api", raw: raw }, {}, { protect: true }).action, "stop");
+});
+
+test("file log giữ bản của từng lượt khi xuất rồi nạp lại", () => {
+  const list = [
+    { id: "a", code: "DFBOTH01", status: "error", at: new Date(NOW - 3 * MIN).toISOString(), detail: "Lỗi G", site: "garena" },
+    { id: "b", code: "DFBOTH01", status: "ok", at: new Date(NOW - 2 * MIN).toISOString(), detail: "Thành công", site: "intl" },
+    { id: "c", code: "DFINTL05", status: "unknown", at: new Date(NOW - MIN).toISOString(), detail: "Lỗi mạng", site: "intl" },
+  ];
+  const text = P.formatLog(list, { exportedAt: new Date(NOW).toISOString() });
+  assert.match(text, /=== QUỐC TẾ — DÙNG ĐƯỢC \(1\) ===\nDFBOTH01\n/);
+  assert.match(text, /=== LỖI \(1\) ===\nDFBOTH01\t/);
+  assert.match(text, /\[OK\] QT \S+ \S+\s+DFBOTH01/);
+  const back = P.parseLog(text);
+  assert.equal(back.length, 3);
+  const key = (e) => e.site + "|" + e.code + "|" + e.status;
+  assert.deepEqual(back.map(key).sort(), ["garena|DFBOTH01|error", "intl|DFBOTH01|ok", "intl|DFINTL05|unknown"]);
+  const merged = P.mergeLogs(list, back);
+  assert.equal(merged.length, 3);
+  /* Chỉ có phần tóm tắt (CHI TIẾT bị cắt): vẫn biết code nào của bản nào. */
+  const head = text.split("=== CHI TIẾT ===")[0];
+  assert.deepEqual(P.parseLog(head).map(key).sort(), ["garena|DFBOTH01|error", "intl|DFBOTH01|ok", "intl|DFINTL05|unknown"]);
+  /* Log chỉ có Garena: không có mục QUỐC TẾ, giống bản cũ. */
+  assert.doesNotMatch(P.formatLog([list[0]], {}), /QUỐC TẾ|\bQT\b/);
+});
+
+/* ---------- Màu biểu tượng ---------- */
+
+test("màu biểu tượng: xanh lá Garena, xanh dương quốc tế, đỏ khi phiên có code lỗi hoặc chưa rõ", () => {
+  const now = NOW;
+  const live = (extra) => Object.assign({ phase: "waiting", updatedAt: now, startedAt: now - MIN, site: "garena", tally: { ok: 0, error: 0, unknown: 0 } }, extra);
+  assert.equal(P.iconLook(null, undefined, now), "garena");
+  assert.equal(P.iconLook(null, "intl", now), "intl");
+  assert.equal(P.iconLook({ phase: "idle" }, "intl", now), "intl");
+  /* Đang chạy: theo bản của phiên, không theo bản đang chọn. */
+  assert.equal(P.iconLook(live({ site: "intl" }), "garena", now), "intl");
+  assert.equal(P.iconLook(live({ tally: { ok: 3, error: 0, unknown: 0 } }), "garena", now), "garena");
+  /* Một code lỗi là đỏ ngay, kể cả khi đang chạy. */
+  assert.equal(P.iconLook(live({ tally: { ok: 3, error: 1, unknown: 0 } }), "garena", now), "red");
+  assert.equal(P.iconLook(live({ site: "intl", tally: { ok: 0, error: 0, unknown: 1 } }), "garena", now), "red");
+  /* Xong mà không có vấn đề: giữ màu của bản. */
+  const done = { phase: "done", updatedAt: now - HOUR, site: "garena", tally: { ok: 5, error: 0, unknown: 0 } };
+  assert.equal(P.iconLook(done, "garena", now), "garena");
+  /* Xong hoặc dừng mà có lỗi: vẫn đỏ, tới khi phiên mới bắt đầu. */
+  const bad = { phase: "stopped", updatedAt: now - HOUR, site: "garena", tally: { ok: 5, error: 1, unknown: 0 } };
+  assert.equal(P.iconLook(bad, "garena", now), "red");
+  /* Đã chuyển sang bản kia: theo màu bản đó. */
+  assert.equal(P.iconLook(bad, "intl", now), "intl");
+  /* Phiên cũ không ghi bản là của Garena. */
+  assert.equal(P.iconLook({ phase: "done", tally: { error: 2 } }, "garena", now), "red");
+  assert.equal(P.iconLook({ phase: "done", tally: "hỏng" }, "garena", now), "garena");
+  assert.deepEqual(P.iconPaths("garena"), { 16: "icons/icon16.png", 48: "icons/icon48.png", 128: "icons/icon128.png" });
+  assert.deepEqual(P.iconPaths("intl")[16], "icons/icon16-intl.png");
+  assert.deepEqual(P.iconPaths("red")[128], "icons/icon128-red.png");
+  assert.deepEqual(P.iconPaths("lạ")[48], "icons/icon48.png");
+  assert.equal(P.LOOKS.garena.accent, "#0ff796");
+  assert.equal(P.LOOKS.intl.accent, "#0079d5");
+  assert.equal(P.LOOKS.red.accent, "#f7413d");
+});
+
+test("file biểu tượng của mọi màu đều có và nằm trong gói", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const pack = fs.readFileSync(path.join(__dirname, "..", "tools", "pack.mjs"), "utf8");
+  for (const look of Object.keys(P.LOOKS)) {
+    for (const file of Object.values(P.iconPaths(look))) {
+      assert.ok(fs.existsSync(path.join(__dirname, "..", file)), file);
+      assert.ok(pack.includes('"' + file + '"'), "pack.mjs thiếu " + file);
+    }
+  }
+});
