@@ -2,7 +2,8 @@
  *
  * Việc duy nhất: điền code vào ô, bấm nút Đổi của trang, rồi đọc phản hồi RedeemCDKey
  * của đúng lần bấm đó và câu trang hiện ra. Bọc fetch/XMLHttpRequest chỉ để ĐỌC phản hồi
- * mà chính trang Garena gửi. Không tạo request mới, không đọc cookie, không gửi gì đi nơi khác.
+ * mà chính trang đổi quà gửi. Không tạo request mới, không đọc cookie, không gửi gì đi nơi khác.
+ * Chạy trên trang Garena và trang quốc tế (thử nghiệm); hai trang dùng cùng khung nhưng khác ô nhập và nút.
  * Kết quả chỉ đi qua MessagePort riêng với runner.js.
  */
 (function () {
@@ -13,6 +14,8 @@
   const WAIT_MS = 15000;
   /* Trang có thể hiện hộp thoại chậm hơn phản hồi máy chủ. Có phản hồi mà chưa thấy câu trên trang thì chờ thêm. */
   const SCREEN_AFTER_RAW_MS = 2500;
+  /* Trang quốc tế (playdeltaforce.com): ô UID đứng trước ô CDK, nút Đổi là #btn-redeem. */
+  const INTL = /(?:^|\.)playdeltaforce\.com$/i.test(location.hostname);
   /* Thấy câu trên trang mà chưa đọc được phản hồi máy chủ thì chờ phản hồi một chút rồi mới ghi. */
   const RAW_AFTER_SCREEN_MS = 400;
 
@@ -294,11 +297,53 @@
     } catch (e) {}
   }
 
+  /* Đang hiện thật trên màn hình (kể cả khi phần tử cha bị ẩn). */
+  function onScreen(el) {
+    return !!el && el.getClientRects().length > 0 && isShown(el);
+  }
+
   function findControls() {
+    if (INTL) {
+      return {
+        input: document.querySelector("input#cdkey"),
+        button: document.querySelector("#btn-redeem"),
+      };
+    }
     return {
       input: document.querySelector("input.exc-input, input.spr.exc-input, .exc-input"),
       button: document.querySelector("a.btn-exchange, .btn-exchange"),
     };
+  }
+
+  /* Trang quốc tế có hai cách đổi: bằng UID (cần captcha) và bằng tài khoản đã đăng nhập.
+   * Tiện ích chỉ dùng cách thứ hai. Đang ở thẻ UID thì chuyển sang thẻ tài khoản; còn thấy ô UID
+   * (chưa đăng nhập) thì không bấm, vì nút Đổi lúc đó sẽ gửi theo UID. */
+  async function intlReady(ui) {
+    const uid = document.querySelector("input#uid");
+    if (onScreen(uid)) {
+      return "Trang quốc tế đang ở chế độ đổi bằng UID. Tiện ích chỉ đổi bằng tài khoản: đăng nhập trên trang rồi tải lại.";
+    }
+    if (!onScreen(ui.button)) {
+      const tab = document.querySelector(".tablist .tab2");
+      if (tab && onScreen(tab)) {
+        tab.click();
+        await sleep(300);
+      }
+    }
+    if (!onScreen(ui.button) || !onScreen(ui.input)) {
+      return "Không thấy ô nhập CDK hoặc nút Đổi. Chọn thẻ đổi bằng tài khoản trên trang quốc tế.";
+    }
+    return "";
+  }
+
+  function captchaShown() {
+    const common = "iframe[src*='captcha'], iframe[src*='geetest'], .geetest_panel";
+    if (!INTL) return !!document.querySelector(common);
+    /* Trang quốc tế nạp sẵn thư viện captcha Tencent (và đăng nhập Level Infinite có thể để lại khung ẩn):
+     * chỉ tính khi khung captcha đang hiện. */
+    const found = document.querySelectorAll(common + ", [id^='tcaptcha'], iframe[src*='turing.captcha']");
+    for (let i = 0; i < found.length; i++) if (onScreen(found[i])) return true;
+    return false;
   }
 
   async function redeemOne(code) {
@@ -306,10 +351,14 @@
     if (!ui.input || !ui.button || ui.input.tagName !== "INPUT") {
       return { source: "ui", text: "Không thấy ô nhập hoặc nút Đổi. Hãy đăng nhập trên trang đổi quà." };
     }
+    if (INTL) {
+      const problem = await intlReady(ui);
+      if (problem) return { source: "ui", text: problem };
+    }
     closeDialog();
     await sleep(150);
     await waitDialogClosed();
-    if (document.querySelector("iframe[src*='captcha'], iframe[src*='geetest'], .geetest_panel")) {
+    if (captchaShown()) {
       return { source: "ui", text: "Trang đang yêu cầu xác minh (captcha)." };
     }
     const before = snapshotDialog();
@@ -334,7 +383,16 @@
       if (raw && !rawAt) rawAt = now;
       if (screen && !screenAt) screenAt = now;
       if (raw && screen) return finishRedeem(raw, screen);
-      if (screen && now - screenAt >= RAW_AFTER_SCREEN_MS) return finishRedeem(raw, screen);
+      if (screen && now - screenAt >= RAW_AFTER_SCREEN_MS) {
+        /* Trang quốc tế: phiên đăng nhập hết hạn thì nút Đổi chuyển sang đổi bằng UID và trang chỉ báo
+         * "Vui lòng nhập UID", không gửi code. Có câu trên trang mà không có request đổi code nào: code chưa được gửi. */
+        if (INTL && !raw && pending && pending.seen === 0) {
+          pending = null;
+          closeDialog();
+          return { source: "ui", text: "Trang báo: " + screen.slice(0, 200) + " Có thể phiên đăng nhập đã hết hạn, hãy tải lại trang." };
+        }
+        return finishRedeem(raw, screen);
+      }
       if (raw && now - rawAt >= SCREEN_AFTER_RAW_MS) return finishRedeem(raw, "");
       await sleep(40);
     }

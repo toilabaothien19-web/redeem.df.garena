@@ -18,11 +18,12 @@ function clearBadge() {
   chrome.action.setBadgeText({ text: "" });
 }
 
-/* Màu biểu tượng: xanh lá, hoặc đỏ khi phiên gần nhất có code lỗi hoặc chưa rõ. Tính lại mỗi khi phiên chạy đổi. */
+/* Màu biểu tượng: xanh lá (bản Garena), xanh dương (bản quốc tế), đỏ (phiên gần nhất có code lỗi hoặc chưa rõ).
+ * Tính lại mỗi khi phiên chạy hoặc bản đang chọn đổi. */
 let painted = "";
 async function paint() {
-  const data = await chrome.storage.local.get([K.run]);
-  const look = P.iconLook(data[K.run]);
+  const data = await chrome.storage.local.get([K.run, K.edition]);
+  const look = P.iconLook(data[K.run], data[K.edition], Date.now());
   if (look !== painted) {
     try {
       await chrome.action.setIcon({ path: P.iconPaths(look) });
@@ -96,5 +97,5 @@ chrome.runtime.onMessage.addListener(function (msg, sender) {
 
 chrome.storage.onChanged.addListener(function (changes, area) {
   if (area !== "local") return;
-  if (changes[K.run]) paint();
+  if (changes[K.run] || changes[K.edition]) paint();
 });

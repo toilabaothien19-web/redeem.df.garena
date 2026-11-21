@@ -712,21 +712,28 @@ test("không báo nhầm câu tiếng Việt, giá tiền, số có dấu phân 
 
 /* ---------- Hai bản: Garena và quốc tế ---------- */
 
-test("chỉ nhận trang đổi code Garena, không nhận trang quốc tế", () => {
+test("nhận đúng trang đổi code của từng bản", () => {
   assert.equal(P.siteOf("https://redeem.df.garena.sg/vi/cdkgarena.html"), "garena");
   assert.equal(P.siteOf("https://redeem.df.garena.sg/cdkgarena.html?x=1"), "garena");
-  assert.equal(P.siteOf("https://www.playdeltaforce.com/vi/cdkredeem.html"), "");
-  assert.equal(P.siteOf("https://www.playdeltaforce.com/en/cdkredeem.html"), "");
-  assert.equal(P.isRedeemUrl("https://www.playdeltaforce.com/vi/cdkredeem.html"), false);
-  assert.equal(P.siteOf("http://redeem.df.garena.sg/vi/cdkgarena.html"), "");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/vi/cdkredeem.html"), "intl");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/en/cdkredeem.html#top"), "intl");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/cdkredeem.html"), "intl");
+  assert.equal(P.siteOf("http://www.playdeltaforce.com/en/cdkredeem.html"), "");
+  assert.equal(P.siteOf("https://playdeltaforce.com/en/cdkredeem.html"), "");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/en/index.html"), "");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/en/cdkgarena.html"), "");
   assert.equal(P.siteOf("https://redeem.df.garena.sg/vi/cdkredeem.html"), "");
+  assert.equal(P.siteOf("https://evil.example/www.playdeltaforce.com/en/cdkredeem.html"), "");
   assert.equal(P.siteOf("không phải url"), "");
-  assert.deepEqual(Object.keys(P.SITES), ["garena"]);
+  assert.ok(P.isRedeemUrl("https://www.playdeltaforce.com/vi/cdkredeem.html"));
   assert.equal(P.siteOf(P.SITES.garena.page), "garena");
-  assert.equal(P.KEYS.edition, undefined);
+  assert.equal(P.siteOf(P.SITES.intl.page), "intl");
+  assert.equal(P.normSite("intl"), "intl");
+  assert.equal(P.normSite(undefined), "garena");
+  assert.equal(P.normSite("lạ"), "garena");
 });
 
-test("lượt log ghi bản; log cũ không ghi bản là của Garena; giữ lượt bản quốc tế từ log 1.1.0", () => {
+test("lượt log ghi bản; log cũ không ghi bản là của Garena", () => {
   const a = P.toEntry("DFINTL01", { source: "api", raw: { code: 0, msg: "ok" } }, new Date(NOW), "intl");
   assert.equal(a.site, "intl");
   const b = P.toEntry("DFGRNA01", { source: "api", raw: { code: 0, msg: "ok" } }, new Date(NOW));
@@ -735,7 +742,7 @@ test("lượt log ghi bản; log cũ không ghi bản là của Garena; giữ l�
   assert.equal(P.normalizeEntry({ code: "DFOLD001", status: "ok", site: "intl" }).site, "intl");
 });
 
-test("lượt bản quốc tế (nạp từ log 1.1.0) không làm bỏ qua code Garena", () => {
+test("bỏ qua code đã có trong log chỉ tính trong cùng một bản", () => {
   const log = [
     { code: "DFSAME01", status: "error", at: new Date(NOW - HOUR).toISOString(), detail: "x" },
     { code: "DFSAME02", status: "ok", at: new Date(NOW - HOUR).toISOString(), detail: "x", site: "intl" },
@@ -751,7 +758,7 @@ test("lượt bản quốc tế (nạp từ log 1.1.0) không làm bỏ qua code
   assert.deepEqual(P.overlap(codes, log), { ok: 1, error: 1, unknown: 0, fresh: 1 });
 });
 
-test("mã trang không coi là lỗi (601008, 503601) và hết phiên (300001) ghi chưa rõ", () => {
+test("mã trang không coi là lỗi (601008, 503601) và hết phiên (300001) ghi chưa rõ ở cả hai bản", () => {
   for (const code of [601008, 503601, 300001]) {
     assert.equal(P.describeApi({ code: code, msg: "" }).status, "unknown");
     for (const site of ["garena", "intl"]) {
@@ -763,7 +770,18 @@ test("mã trang không coi là lỗi (601008, 503601) và hết phiên (300001) 
   assert.equal(P.describeApi({ code: 400068, msg: "CDK đã đạt giới hạn đổi." }).status, "error");
 });
 
-test("file log của bản 1.1.0 có lượt bản quốc tế: nạp lại vẫn giữ riêng", () => {
+test("câu của trang quốc tế: thành công, lỗi, lỗi mạng (giới hạn tần suất)", () => {
+  const ok = P.toEntry("DFINTL02", { source: "api", raw: { code: 0, msg: "ok", screen: "Đã nhận thành công! Vui lòng kiểm tra hộp thư trong game của bạn." } }, new Date(NOW), "intl");
+  assert.equal(ok.status, "ok");
+  const bad = P.toEntry("DFINTL03", { source: "api", raw: { code: 400054, screen: "CDKey đã nhập không hợp lệ. Vui lòng thử lại." } }, new Date(NOW), "intl");
+  assert.equal(bad.status, "error");
+  const raw = { code: 400086, msg: "frequency limit", screen: "Lỗi mạng, vui lòng thử lại sau" };
+  const busy = P.toEntry("DFINTL04", { source: "api", raw: raw }, new Date(NOW), "intl");
+  assert.equal(busy.status, "unknown");
+  assert.equal(P.judge(busy, { source: "api", raw: raw }, {}, { protect: true }).action, "stop");
+});
+
+test("file log giữ bản của từng lượt khi xuất rồi nạp lại", () => {
   const list = [
     { id: "a", code: "DFBOTH01", status: "error", at: new Date(NOW - 3 * MIN).toISOString(), detail: "Lỗi G", site: "garena" },
     { id: "b", code: "DFBOTH01", status: "ok", at: new Date(NOW - 2 * MIN).toISOString(), detail: "Thành công", site: "intl" },
@@ -788,28 +806,35 @@ test("file log của bản 1.1.0 có lượt bản quốc tế: nạp lại vẫ
 
 /* ---------- Màu biểu tượng ---------- */
 
-test("màu biểu tượng: xanh lá, đỏ khi phiên có code lỗi hoặc chưa rõ", () => {
+test("màu biểu tượng: xanh lá Garena, xanh dương quốc tế, đỏ khi phiên có code lỗi hoặc chưa rõ", () => {
   const now = NOW;
   const live = (extra) => Object.assign({ phase: "waiting", updatedAt: now, startedAt: now - MIN, site: "garena", tally: { ok: 0, error: 0, unknown: 0 } }, extra);
-  assert.equal(P.iconLook(null), "garena");
-  assert.equal(P.iconLook({ phase: "idle" }), "garena");
-  assert.equal(P.iconLook(live({ tally: { ok: 3, error: 0, unknown: 0 } })), "garena");
+  assert.equal(P.iconLook(null, undefined, now), "garena");
+  assert.equal(P.iconLook(null, "intl", now), "intl");
+  assert.equal(P.iconLook({ phase: "idle" }, "intl", now), "intl");
+  /* Đang chạy: theo bản của phiên, không theo bản đang chọn. */
+  assert.equal(P.iconLook(live({ site: "intl" }), "garena", now), "intl");
+  assert.equal(P.iconLook(live({ tally: { ok: 3, error: 0, unknown: 0 } }), "garena", now), "garena");
   /* Một code lỗi là đỏ ngay, kể cả khi đang chạy. */
-  assert.equal(P.iconLook(live({ tally: { ok: 3, error: 1, unknown: 0 } })), "red");
-  assert.equal(P.iconLook(live({ tally: { ok: 0, error: 0, unknown: 1 } })), "red");
-  /* Xong mà không có vấn đề: giữ xanh lá. */
-  assert.equal(P.iconLook({ phase: "done", updatedAt: now - HOUR, site: "garena", tally: { ok: 5, error: 0, unknown: 0 } }), "garena");
+  assert.equal(P.iconLook(live({ tally: { ok: 3, error: 1, unknown: 0 } }), "garena", now), "red");
+  assert.equal(P.iconLook(live({ site: "intl", tally: { ok: 0, error: 0, unknown: 1 } }), "garena", now), "red");
+  /* Xong mà không có vấn đề: giữ màu của bản. */
+  const done = { phase: "done", updatedAt: now - HOUR, site: "garena", tally: { ok: 5, error: 0, unknown: 0 } };
+  assert.equal(P.iconLook(done, "garena", now), "garena");
   /* Xong hoặc dừng mà có lỗi: vẫn đỏ, tới khi phiên mới bắt đầu. */
-  assert.equal(P.iconLook({ phase: "stopped", updatedAt: now - HOUR, site: "garena", tally: { ok: 5, error: 1, unknown: 0 } }), "red");
-  /* Phiên cũ không ghi bản là của Garena; phiên bản quốc tế (từ 1.1.0) không làm đỏ. */
-  assert.equal(P.iconLook({ phase: "done", tally: { error: 2 } }), "red");
-  assert.equal(P.iconLook({ phase: "done", site: "intl", tally: { error: 2 } }), "garena");
-  assert.equal(P.iconLook({ phase: "done", tally: "hỏng" }), "garena");
+  const bad = { phase: "stopped", updatedAt: now - HOUR, site: "garena", tally: { ok: 5, error: 1, unknown: 0 } };
+  assert.equal(P.iconLook(bad, "garena", now), "red");
+  /* Đã chuyển sang bản kia: theo màu bản đó. */
+  assert.equal(P.iconLook(bad, "intl", now), "intl");
+  /* Phiên cũ không ghi bản là của Garena. */
+  assert.equal(P.iconLook({ phase: "done", tally: { error: 2 } }, "garena", now), "red");
+  assert.equal(P.iconLook({ phase: "done", tally: "hỏng" }, "garena", now), "garena");
   assert.deepEqual(P.iconPaths("garena"), { 16: "icons/icon16.png", 48: "icons/icon48.png", 128: "icons/icon128.png" });
+  assert.deepEqual(P.iconPaths("intl")[16], "icons/icon16-intl.png");
   assert.deepEqual(P.iconPaths("red")[128], "icons/icon128-red.png");
-  assert.deepEqual(P.iconPaths("intl")[48], "icons/icon48.png");
-  assert.deepEqual(Object.keys(P.LOOKS), ["garena", "red"]);
+  assert.deepEqual(P.iconPaths("lạ")[48], "icons/icon48.png");
   assert.equal(P.LOOKS.garena.accent, "#0ff796");
+  assert.equal(P.LOOKS.intl.accent, "#0079d5");
   assert.equal(P.LOOKS.red.accent, "#f7413d");
 });
 
