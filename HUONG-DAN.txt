@@ -33,6 +33,8 @@ Dùng
    Tắt bảo vệ thì tối đa 100 code mỗi lần và có hỏi lại. Không thể cam kết tài khoản không bị khóa.
 5. Bấm Bắt đầu. Nút ghi rõ lần này nhập bao nhiêu code. Có thể đóng popup, việc nhập vẫn chạy.
    Để tab đổi code mở trong lúc chạy. Không mở hai tab đổi quà để chạy cùng lúc.
+   Biểu tượng: xanh lá là bản Garena, xanh dương là bản quốc tế, số trên biểu tượng là số code còn lại.
+   Biểu tượng chuyển đỏ khi có dù chỉ một code lỗi hoặc chưa rõ, và giữ đỏ tới lần chạy sau hoặc khi xóa log.
 6. Bấm Dừng ở bất kỳ tab nào để dừng. Đang nghỉ thì dừng ngay, đang nhập thì dừng sau code đó.
 7. Nhật ký ghi nguyên câu trên trang và câu máy chủ, kèm mã số. Lọc theo Dùng được, Lỗi, Chưa rõ.
    Chưa rõ nghĩa là không đọc được kết quả, code chưa được gửi, hoặc trang báo lỗi tạm thời

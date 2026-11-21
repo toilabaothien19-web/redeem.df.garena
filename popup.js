@@ -13,7 +13,7 @@
 
   const el = {};
   [
-    "ver", "status", "statusBox", "statusAction", "edGarena", "edIntl", "editionNote", "noteGarena", "noteIntl", "codes", "count", "parseNote", "pick", "demo", "clearCodes", "file",
+    "ver", "mark", "status", "statusBox", "statusAction", "edGarena", "edIntl", "editionNote", "noteGarena", "noteIntl", "codes", "count", "parseNote", "pick", "demo", "clearCodes", "file",
     "suspects", "suspectTitle", "suspectList", "suspectMore", "suspectHint", "fixSuspects",
     "protect", "protectInfo", "freePace", "randomGap", "gapBlock", "gap", "gapValue", "skipLogged",
     "statTotal", "statFresh", "statQueue", "skipNote", "quota", "eta", "start", "stop", "progressBox", "barWrap", "bar", "runTally",
@@ -261,6 +261,10 @@
       btn.disabled = locked && !on;
     });
     el.editionNote.dataset.site = site;
+    if (document.body.dataset.site !== site) {
+      document.body.dataset.site = site;
+      el.mark.src = P.iconPaths(site)[48];
+    }
     el.noteGarena.hidden = site !== "garena";
     el.noteIntl.hidden = site !== "intl";
     el.demo.disabled = site === "intl";

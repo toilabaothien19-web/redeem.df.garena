@@ -70,6 +70,16 @@ Cũng có thể tải mã nguồn (Code → Download ZIP hoặc `git clone`) r�
 6. Bấm **Dừng** ở bất kỳ tab nào. Đang nghỉ thì dừng ngay; đang nhập thì dừng sau code đó.
 7. Danh sách dài hơn trần mỗi lần thì bấm Bắt đầu lại sau khi hết thời gian chờ. Code đã có trong log tự được bỏ qua.
 
+### Biểu tượng trên thanh công cụ
+
+Số trên biểu tượng là số code còn lại của lần chạy; màu đậm khi đang nhập, sắc nhạt khi đang nghỉ. Màu lấy theo theme của trang [FADEX.VN](https://fadex.vn/delta-force-code):
+
+| Biểu tượng | Khi nào |
+| --- | --- |
+| Xanh lá `#0ff796` | Bản Garena. Chạy xong mà không có code nào lỗi thì giữ nguyên màu này. |
+| Xanh dương `#0079d5` | Bản quốc tế (màu mặc định của trang). |
+| Đỏ `#f7413d` | Lần chạy gần nhất có dù chỉ một code lỗi hoặc chưa rõ. Đỏ ngay từ code lỗi đầu tiên và giữ đỏ tới khi bắt đầu lần chạy mới, đổi sang bản kia, hoặc xóa log. |
+
 Để tab đổi code mở trong lúc chạy. Tab bị ẩn quá 5 phút thì Chrome có thể làm chậm bộ đếm, nên thời gian thực tế có thể dài hơn ước tính.
 
 ### Bảo vệ tài khoản
@@ -235,7 +245,7 @@ Không có địa chỉ máy chủ thứ ba. Nếu bản bạn tải có URL l�
 | File | Chạy ở đâu | Việc cần thấy |
 | --- | --- | --- |
 | [manifest.json](manifest.json) | | Quyền hẹp, CSP `connect-src 'none'` |
-| [sw.js](sw.js) | service worker | Chỉ hiện hoặc xóa số trên biểu tượng, dọn phiên bị bỏ dở |
+| [sw.js](sw.js) | service worker | Chỉ đổi màu biểu tượng, hiện hoặc xóa số trên biểu tượng, dọn phiên bị bỏ dở |
 | [parser.js](parser.js) | mọi nơi | Logic thuần: đọc code, hạn mức, đọc kết quả, file log. Không DOM, không mạng |
 | [inject.js](inject.js) | trang đổi code (MAIN) | Điền code, bấm Đổi, chỉ đọc phản hồi `RedeemCDKey`, trả kết quả qua `MessagePort` |
 | [runner.js](runner.js) | trang đổi code (tách biệt) | Điều phối từng code, chỉ lưu log và trạng thái vào `chrome.storage.local` |

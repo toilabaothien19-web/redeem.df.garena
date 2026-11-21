@@ -17,6 +17,13 @@ Bản quốc tế (thử nghiệm)
 - Tab đang mở là trang của bản kia thì popup báo và có nút chuyển bản. Bấm Bắt đầu ở bản quốc tế thì popup hỏi lại. Runner từ chối chạy nếu bản trong popup khác trang đang mở.
 - Hạn mức bảo vệ tính chung cho cả hai bản.
 
+Biểu tượng
+
+- Màu biểu tượng theo theme của trang FADEX.VN: xanh lá `#0ff796` (bản Garena), xanh dương `#0079d5`, màu mặc định của trang (bản quốc tế), đỏ `#f7413d` khi lần chạy gần nhất có dù chỉ một code lỗi hoặc chưa rõ. Đỏ ngay từ code lỗi đầu tiên, giữ đỏ tới khi bắt đầu lần chạy mới, đổi bản, hoặc xóa log. Chạy xong không lỗi thì giữ nguyên màu của bản.
+- Số code còn lại trên biểu tượng có nền cùng màu biểu tượng: màu đậm khi đang nhập, sắc nhạt khi đang nghỉ (trước đây xanh đậm và vàng cố định).
+- Popup dùng cùng bảng màu: xanh lá `#0ff796` ở bản Garena; chọn bản quốc tế thì nút, viền và logo trên popup chuyển sang xanh dương.
+- `tools/icons.py` tạo biểu tượng xanh dương và đỏ từ biểu tượng gốc (chỉ đổi phần tam giác).
+
 Cả hai bản
 
 - Mã 601008 và 503601 (trang không coi là lỗi và không báo gì) và 300001 (hết phiên, trang tự đăng xuất) giờ ghi **chưa rõ** và dừng, không ghi lỗi. Trước đây ở trang Garena các mã này bị ghi lỗi và code bị bỏ qua vĩnh viễn.

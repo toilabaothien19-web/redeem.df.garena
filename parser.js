@@ -1359,6 +1359,31 @@
     return t - (Number(run.updatedAt) || 0) < LIMITS.staleMs;
   }
 
+  /* Màu biểu tượng theo theme của trang FADEX.VN: xanh lá Delta Force (bản Garena), xanh dương mặc định
+   * của trang (bản quốc tế), đỏ báo lỗi (phiên có code lỗi). light là sắc nhạt, dùng khi đang nghỉ. */
+  const LOOKS = Object.freeze({
+    garena: Object.freeze({ accent: "#0ff796", light: "#7bfbc5", text: "#000000", icon: "" }),
+    intl: Object.freeze({ accent: "#0079d5", light: "#4da1e2", text: "#ffffff", icon: "-intl" }),
+    red: Object.freeze({ accent: "#f7413d", light: "#ffb4b1", text: "#000000", icon: "-red" }),
+  });
+
+  /* Biểu tượng nên mang màu nào. Đang chạy: theo bản của phiên; không chạy: theo bản đang chọn.
+   * Phiên gần nhất của bản đó có dù chỉ một code lỗi hoặc chưa rõ thì đỏ, tới khi bắt đầu phiên mới hoặc xóa log. */
+  function iconLook(run, edition, now) {
+    const active = isRunActive(run, now);
+    const site = active ? normSite(run.site) : normSite(edition);
+    if (run && typeof run === "object" && run.phase && run.phase !== "idle" && normSite(run.site) === site) {
+      const t = run.tally && typeof run.tally === "object" ? run.tally : {};
+      if ((Number(t.error) || 0) + (Number(t.unknown) || 0) > 0) return "red";
+    }
+    return site;
+  }
+
+  function iconPaths(look) {
+    const suffix = (LOOKS[look] || LOOKS.garena).icon;
+    return { 16: "icons/icon16" + suffix + ".png", 48: "icons/icon48" + suffix + ".png", 128: "icons/icon128" + suffix + ".png" };
+  }
+
   /* Trang đổi code nào ("garena" hoặc "intl"), hoặc "" nếu không phải trang đổi code. */
   function siteOf(url) {
     try {
@@ -1384,6 +1409,9 @@
     REDEEM_PAGE: REDEEM_PAGE,
     REDEEM_PATH: REDEEM_PATH,
     SITES: SITES,
+    LOOKS: LOOKS,
+    iconLook: iconLook,
+    iconPaths: iconPaths,
     normSite: normSite,
     siteOf: siteOf,
     onSite: onSite,

@@ -803,3 +803,49 @@ test("file log giữ bản của từng lượt khi xuất rồi nạp lại", (
   /* Log chỉ có Garena: không có mục QUỐC TẾ, giống bản cũ. */
   assert.doesNotMatch(P.formatLog([list[0]], {}), /QUỐC TẾ|\bQT\b/);
 });
+
+/* ---------- Màu biểu tượng ---------- */
+
+test("màu biểu tượng: xanh lá Garena, xanh dương quốc tế, đỏ khi phiên có code lỗi hoặc chưa rõ", () => {
+  const now = NOW;
+  const live = (extra) => Object.assign({ phase: "waiting", updatedAt: now, startedAt: now - MIN, site: "garena", tally: { ok: 0, error: 0, unknown: 0 } }, extra);
+  assert.equal(P.iconLook(null, undefined, now), "garena");
+  assert.equal(P.iconLook(null, "intl", now), "intl");
+  assert.equal(P.iconLook({ phase: "idle" }, "intl", now), "intl");
+  /* Đang chạy: theo bản của phiên, không theo bản đang chọn. */
+  assert.equal(P.iconLook(live({ site: "intl" }), "garena", now), "intl");
+  assert.equal(P.iconLook(live({ tally: { ok: 3, error: 0, unknown: 0 } }), "garena", now), "garena");
+  /* Một code lỗi là đỏ ngay, kể cả khi đang chạy. */
+  assert.equal(P.iconLook(live({ tally: { ok: 3, error: 1, unknown: 0 } }), "garena", now), "red");
+  assert.equal(P.iconLook(live({ site: "intl", tally: { ok: 0, error: 0, unknown: 1 } }), "garena", now), "red");
+  /* Xong mà không có vấn đề: giữ màu của bản. */
+  const done = { phase: "done", updatedAt: now - HOUR, site: "garena", tally: { ok: 5, error: 0, unknown: 0 } };
+  assert.equal(P.iconLook(done, "garena", now), "garena");
+  /* Xong hoặc dừng mà có lỗi: vẫn đỏ, tới khi phiên mới bắt đầu. */
+  const bad = { phase: "stopped", updatedAt: now - HOUR, site: "garena", tally: { ok: 5, error: 1, unknown: 0 } };
+  assert.equal(P.iconLook(bad, "garena", now), "red");
+  /* Đã chuyển sang bản kia: theo màu bản đó. */
+  assert.equal(P.iconLook(bad, "intl", now), "intl");
+  /* Phiên cũ không ghi bản là của Garena. */
+  assert.equal(P.iconLook({ phase: "done", tally: { error: 2 } }, "garena", now), "red");
+  assert.equal(P.iconLook({ phase: "done", tally: "hỏng" }, "garena", now), "garena");
+  assert.deepEqual(P.iconPaths("garena"), { 16: "icons/icon16.png", 48: "icons/icon48.png", 128: "icons/icon128.png" });
+  assert.deepEqual(P.iconPaths("intl")[16], "icons/icon16-intl.png");
+  assert.deepEqual(P.iconPaths("red")[128], "icons/icon128-red.png");
+  assert.deepEqual(P.iconPaths("lạ")[48], "icons/icon48.png");
+  assert.equal(P.LOOKS.garena.accent, "#0ff796");
+  assert.equal(P.LOOKS.intl.accent, "#0079d5");
+  assert.equal(P.LOOKS.red.accent, "#f7413d");
+});
+
+test("file biểu tượng của mọi màu đều có và nằm trong gói", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const pack = fs.readFileSync(path.join(__dirname, "..", "tools", "pack.mjs"), "utf8");
+  for (const look of Object.keys(P.LOOKS)) {
+    for (const file of Object.values(P.iconPaths(look))) {
+      assert.ok(fs.existsSync(path.join(__dirname, "..", file)), file);
+      assert.ok(pack.includes('"' + file + '"'), "pack.mjs thiếu " + file);
+    }
+  }
+});

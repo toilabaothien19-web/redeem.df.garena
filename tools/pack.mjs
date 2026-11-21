@@ -30,6 +30,12 @@ export const RUNTIME = [
   "icons/icon16.png",
   "icons/icon48.png",
   "icons/icon128.png",
+  "icons/icon16-intl.png",
+  "icons/icon48-intl.png",
+  "icons/icon128-intl.png",
+  "icons/icon16-red.png",
+  "icons/icon48-red.png",
+  "icons/icon128-red.png",
 ];
 const EXTRA_IN_ZIP = ["SHA256SUMS", "HUONG-DAN.txt"];
 
