@@ -18,7 +18,7 @@
   const REDEEM_PAGE = "https://redeem.df.garena.sg/vi/cdkgarena.html";
   const REDEEM_PATH = /^\/(?:[^/]+\/)?cdkgarena\.html$/i;
 
-  /* Hai trang đổi code: Garena (mặc định) và trang quốc tế của Level Infinite (thử nghiệm). */
+  /* Bản này chỉ chạy trên trang đổi code Garena. */
   const SITES = Object.freeze({
     garena: Object.freeze({
       id: "garena",
@@ -27,15 +27,10 @@
       page: "https://redeem.df.garena.sg/vi/cdkgarena.html",
       path: /^\/(?:[^/]+\/)?cdkgarena\.html$/i,
     }),
-    intl: Object.freeze({
-      id: "intl",
-      label: "quốc tế",
-      host: "www.playdeltaforce.com",
-      page: "https://www.playdeltaforce.com/vi/cdkredeem.html",
-      path: /^\/(?:[^/]+\/)?cdkredeem\.html$/i,
-    }),
   });
 
+  /* Bản của một lượt log. "intl" chỉ có ở lượt nạp từ file log của bản 1.1.0 (có bản quốc tế thử nghiệm):
+   * giữ nguyên để không lẫn với lượt Garena, không bị tính khi bỏ qua code đã có trong log. */
   function normSite(site) {
     return site === "intl" ? "intl" : "garena";
   }
@@ -51,7 +46,6 @@
     run: "dfcode.run",
     attempts: "dfcode.attempts",
     stop: "dfcode.stop",
-    edition: "dfcode.edition",
   });
   /* Khóa của bản cũ, xóa khi gặp. */
   const LEGACY_KEYS = Object.freeze(["dfcode.restUntil", "dfcode.skipOk"]);
@@ -939,7 +933,7 @@
     return isAccountRisk(value) || TRANSIENT_TEXT.test(value) || TRANSIENT_CODE_SUFFIX.test(value);
   }
 
-  /* Cả hai trang đổi code (cùng máy chủ sg-act.playerinfinite.com) không coi 601008, 503601 là lỗi và không báo gì;
+  /* Trang đổi code (máy chủ sg-act.playerinfinite.com) không coi 601008, 503601 là lỗi và không báo gì;
    * 300001 là hết phiên đăng nhập (trang tự đăng xuất rồi tải lại).
    * Không rõ nghĩa nên ghi "chưa rõ": không tính là lỗi, lần sau vẫn nhập lại. */
   const SILENT_CODES = [601008, 503601, 300001];
@@ -1191,7 +1185,7 @@
     if (info.settings) lines.push("Chế độ: " + describePace(info.settings));
     lines.push("Tổng: " + count.all + " lượt, " + count.ok + " dùng được, " + count.error + " lỗi, " + count.unknown + " chưa rõ");
     lines.push("");
-    /* Mỗi bản một bộ mục tóm tắt. Mục của bản quốc tế có chữ "QUỐC TẾ —" ở đầu, lượt ở CHI TIẾT có "QT" trước giờ. */
+    /* Lượt của bản quốc tế (chỉ có khi nạp log từ bản 1.1.0) có mục tóm tắt riêng "QUỐC TẾ —" và "QT" trước giờ ở CHI TIẾT. */
     const intlList = list.filter(function (e) { return normSite(e.site) === "intl"; });
     const garenaList = list.filter(function (e) { return normSite(e.site) !== "intl"; });
     const groups = [{ prefix: "", list: garenaList }];
@@ -1359,24 +1353,21 @@
     return t - (Number(run.updatedAt) || 0) < LIMITS.staleMs;
   }
 
-  /* Màu biểu tượng theo theme của trang FADEX.VN: xanh lá Delta Force (bản Garena), xanh dương mặc định
-   * của trang (bản quốc tế), đỏ báo lỗi (phiên có code lỗi). light là sắc nhạt, dùng khi đang nghỉ. */
+  /* Màu biểu tượng theo theme của trang FADEX.VN: xanh lá Delta Force, đỏ báo lỗi (phiên có code lỗi).
+   * light là sắc nhạt, dùng khi đang nghỉ. */
   const LOOKS = Object.freeze({
     garena: Object.freeze({ accent: "#0ff796", light: "#7bfbc5", text: "#000000", icon: "" }),
-    intl: Object.freeze({ accent: "#0079d5", light: "#4da1e2", text: "#ffffff", icon: "-intl" }),
     red: Object.freeze({ accent: "#f7413d", light: "#ffb4b1", text: "#000000", icon: "-red" }),
   });
 
-  /* Biểu tượng nên mang màu nào. Đang chạy: theo bản của phiên; không chạy: theo bản đang chọn.
-   * Phiên gần nhất của bản đó có dù chỉ một code lỗi hoặc chưa rõ thì đỏ, tới khi bắt đầu phiên mới hoặc xóa log. */
-  function iconLook(run, edition, now) {
-    const active = isRunActive(run, now);
-    const site = active ? normSite(run.site) : normSite(edition);
-    if (run && typeof run === "object" && run.phase && run.phase !== "idle" && normSite(run.site) === site) {
+  /* Biểu tượng nên mang màu nào: phiên gần nhất có dù chỉ một code lỗi hoặc chưa rõ thì đỏ (kể cả đang chạy),
+   * tới khi bắt đầu phiên mới hoặc xóa log; còn lại xanh lá. */
+  function iconLook(run) {
+    if (run && typeof run === "object" && run.phase && run.phase !== "idle" && normSite(run.site) === "garena") {
       const t = run.tally && typeof run.tally === "object" ? run.tally : {};
       if ((Number(t.error) || 0) + (Number(t.unknown) || 0) > 0) return "red";
     }
-    return site;
+    return "garena";
   }
 
   function iconPaths(look) {
@@ -1384,7 +1375,7 @@
     return { 16: "icons/icon16" + suffix + ".png", 48: "icons/icon48" + suffix + ".png", 128: "icons/icon128" + suffix + ".png" };
   }
 
-  /* Trang đổi code nào ("garena" hoặc "intl"), hoặc "" nếu không phải trang đổi code. */
+  /* "garena" nếu là trang đổi code, "" nếu không. */
   function siteOf(url) {
     try {
       const u = new URL(String(url || ""));

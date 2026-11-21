@@ -30,9 +30,6 @@ export const RUNTIME = [
   "icons/icon16.png",
   "icons/icon48.png",
   "icons/icon128.png",
-  "icons/icon16-intl.png",
-  "icons/icon48-intl.png",
-  "icons/icon128-intl.png",
   "icons/icon16-red.png",
   "icons/icon48-red.png",
   "icons/icon128-red.png",
@@ -42,8 +39,6 @@ const EXTRA_IN_ZIP = ["SHA256SUMS", "HUONG-DAN.txt"];
 const ALLOWED_URLS = [
   /^https:\/\/redeem\.df\.garena\.sg\/(?:\*\/)?cdkgarena\.html\*?$/,
   /^https:\/\/redeem\.df\.garena\.sg\/vi\/cdkgarena\.html$/,
-  /^https:\/\/www\.playdeltaforce\.com\/(?:\*\/)?cdkredeem\.html\*?$/,
-  /^https:\/\/www\.playdeltaforce\.com\/vi\/cdkredeem\.html$/,
   /^https:\/\/github\.com\/toilabaothien19-web\/redeem\.df\.garena$/,
 ];
 
@@ -108,11 +103,8 @@ function audit() {
   }
   const csp = (manifest.content_security_policy || {}).extension_pages || "";
   if (!/connect-src 'none'/.test(csp)) fail("manifest: CSP phải có connect-src 'none'");
-  /* Chỉ hai trang đổi code: Garena và trang quốc tế. Hai content script phải chạy trên đúng cùng các trang. */
-  const PAGE_MATCH = [
-    /^https:\/\/redeem\.df\.garena\.sg\/(?:\*\/)?cdkgarena\.html\*$/,
-    /^https:\/\/www\.playdeltaforce\.com\/(?:\*\/)?cdkredeem\.html\*$/,
-  ];
+  /* Chỉ trang đổi code Garena. Hai content script phải chạy trên đúng cùng các trang. */
+  const PAGE_MATCH = [/^https:\/\/redeem\.df\.garena\.sg\/(?:\*\/)?cdkgarena\.html\*$/];
   const matchSets = new Set();
   for (const cs of manifest.content_scripts || []) {
     for (const m of cs.matches || []) {

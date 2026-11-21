@@ -3,7 +3,6 @@
 Chạy: python3 tools/icons.py   (cần Pillow)
 
 Màu lấy theo theme của trang FADEX.VN (src/styles.css):
-  - intl: xanh dương mặc định của trang, #0079d5   → icons/icon<cỡ>-intl.png (bản quốc tế)
   - red:  đỏ báo lỗi (.is-fault), #f7413d           → icons/icon<cỡ>-red.png  (có code lỗi)
 Chỉ đổi phần hình tam giác màu xanh lá (#01fc94) và viền hòa trộn của nó; nền và các vệt vàng giữ nguyên.
 """
@@ -13,7 +12,7 @@ from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SOURCE = (1, 252, 148)  # màu xanh lá của biểu tượng gốc
-TARGETS = {"intl": (0x00, 0x79, 0xD5), "red": (0xF7, 0x41, 0x3D)}
+TARGETS = {"red": (0xF7, 0x41, 0x3D)}
 BG_GREEN = 40  # kênh G của nền tối
 
 

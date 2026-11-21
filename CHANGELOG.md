@@ -2,32 +2,21 @@
 
 Từ bản 1.0.0, số phiên bản được đánh lại. Mã trước khi viết lại, trước đây đánh số 1.9.9, nay là **0.5.0 beta**. Các mốc cũ 1.0 đến 1.9.9 vẫn giữ ở cuối file với số cũ, chỉ để tra cứu.
 
-## 1.1.0
+## 1.0.3
 
-Thêm bản quốc tế (thử nghiệm) và phát hiện ký tự sai trong code. Bản 1.0.3 không phát hành riêng; mọi thay đổi của nó nằm trong bản này.
-
-Bản quốc tế (thử nghiệm)
-
-- Popup có hai nút ngay trên ô danh sách code: **Bản Garena** và **Bản quốc tế (thử nghiệm)**, kèm ghi chú cho từng bản. Lựa chọn được nhớ; đang chạy thì không đổi được.
-- Bản quốc tế chạy trên trang đổi quà của Level Infinite: https://www.playdeltaforce.com/vi/cdkredeem.html (mọi ngôn ngữ của trang). Manifest thêm đúng trang này vào `content_scripts`; quyền vẫn chỉ có `storage` và `activeTab`.
-- Chỉ đổi bằng tài khoản đã đăng nhập trên trang (nút Redeem ở thẻ tài khoản). Không dùng cách đổi bằng UID vì cách đó cần captcha Tencent. Trang còn ở chế độ UID (chưa đăng nhập) thì tiện ích không bấm. Đang ở thẻ UID khi đã đăng nhập thì tự chuyển sang thẻ tài khoản.
-- Đã đối chiếu mã của hai trang: cùng khung giao diện, cùng máy chủ đổi code (`sg-act.playerinfinite.com`, `RedeemCDKey`) và cùng câu tiếng Việt, nhưng gửi cho hai mã game khác nhau (Garena `30150`, quốc tế `29158`). Vì vậy code hai bản không dùng chung. Demo Code là code Garena nên bị tắt ở bản quốc tế.
-- Log ghi bản của từng lượt. "Bỏ qua code đã có trong log" và phần đối chiếu chỉ tính lượt của cùng bản. Log cũ không ghi bản được tính là của Garena.
-- File log: lượt của bản quốc tế có `QT` trước giờ ở phần CHI TIẾT, và có mục tóm tắt riêng `=== QUỐC TẾ — DÙNG ĐƯỢC / LỖI / CHƯA RÕ ===`. Log chỉ có Garena thì giống hệt bản trước.
-- Tab đang mở là trang của bản kia thì popup báo và có nút chuyển bản. Bấm Bắt đầu ở bản quốc tế thì popup hỏi lại. Runner từ chối chạy nếu bản trong popup khác trang đang mở.
-- Hạn mức bảo vệ tính chung cho cả hai bản.
+Phát hiện ký tự sai trong code, màu biểu tượng báo lỗi. Bản này chỉ chạy trên trang Garena. Bản 1.1.0 (pre-release) có các thay đổi dưới đây cộng với bản quốc tế thử nghiệm.
 
 Biểu tượng
 
-- Màu biểu tượng theo theme của trang FADEX.VN: xanh lá `#0ff796` (bản Garena), xanh dương `#0079d5`, màu mặc định của trang (bản quốc tế), đỏ `#f7413d` khi lần chạy gần nhất có dù chỉ một code lỗi hoặc chưa rõ. Đỏ ngay từ code lỗi đầu tiên, giữ đỏ tới khi bắt đầu lần chạy mới, đổi bản, hoặc xóa log. Chạy xong không lỗi thì giữ nguyên màu của bản.
+- Màu biểu tượng theo theme của trang FADEX.VN: xanh lá `#0ff796`; đỏ `#f7413d` khi lần chạy gần nhất có dù chỉ một code lỗi hoặc chưa rõ. Đỏ ngay từ code lỗi đầu tiên, giữ đỏ tới khi bắt đầu lần chạy mới hoặc xóa log. Chạy xong không lỗi thì giữ nguyên xanh lá.
 - Số code còn lại trên biểu tượng có nền cùng màu biểu tượng: màu đậm khi đang nhập, sắc nhạt khi đang nghỉ (trước đây xanh đậm và vàng cố định).
-- Popup dùng cùng bảng màu: xanh lá `#0ff796` ở bản Garena; chọn bản quốc tế thì nút, viền và logo trên popup chuyển sang xanh dương.
-- `tools/icons.py` tạo biểu tượng xanh dương và đỏ từ biểu tượng gốc (chỉ đổi phần tam giác).
+- Popup dùng cùng màu xanh lá `#0ff796`.
+- `tools/icons.py` tạo biểu tượng đỏ từ biểu tượng gốc (chỉ đổi phần tam giác).
 
-Cả hai bản
+Kết quả đổi code
 
-- Mã 601008 và 503601 (trang không coi là lỗi và không báo gì) và 300001 (hết phiên, trang tự đăng xuất) giờ ghi **chưa rõ** và dừng, không ghi lỗi. Trước đây ở trang Garena các mã này bị ghi lỗi và code bị bỏ qua vĩnh viễn.
-- Captcha Tencent của trang quốc tế chỉ được tính khi đang hiện trên màn hình.
+- Mã 601008 và 503601 (trang Garena không coi là lỗi và không báo gì) và 300001 (hết phiên, trang tự đăng xuất) giờ ghi **chưa rõ** và dừng. Trước đây các mã này bị ghi lỗi và code bị bỏ qua vĩnh viễn.
+- Nạp file log của bản 1.1.0 có lượt bản quốc tế: các lượt đó được giữ riêng (hiện chữ `QT`), không làm bỏ qua code Garena. Xuất lại thì vẫn nằm ở mục `QUỐC TẾ —`.
 
 Ký tự sai trong code
 
