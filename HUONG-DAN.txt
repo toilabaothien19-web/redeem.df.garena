@@ -23,7 +23,8 @@ Dùng
 3. Dán code hoặc bấm Mở file .txt. Mỗi dòng một code. Dòng bắt đầu bằng # được bỏ qua.
    Code có ký tự sai (chữ Nga/Hy Lạp trông giống chữ Latin, số La Mã, chữ toàn chiều rộng, chữ có dấu
    do bộ gõ Telex/VNI, ký tự đặc biệt) được báo dưới ô danh sách và không được nhập. Bấm Sửa tự động
-   cho loại sửa chắc được; chữ có dấu thì tắt bộ gõ tiếng Việt rồi gõ lại.
+   để sửa. Code có dấu được so với code đã biết; không khớp thì là đoán, nên xem lại trước khi chạy.
+   An toàn nhất vẫn là tắt bộ gõ tiếng Việt khi gõ code.
    Demo Code là danh sách mẫu, có thể đã hết hạn. Mỗi code sai là một lần thử trên tài khoản của bạn.
 4. Nên để bật Bảo vệ tài khoản: nghỉ ngẫu nhiên 20–30 giây, tối đa 30 code mỗi lần bấm,
    30 code mỗi 60 phút, 60 code mỗi 24 giờ, 5 lỗi liên tiếp thì tự nghỉ 30–60 giây rồi nhập tiếp.

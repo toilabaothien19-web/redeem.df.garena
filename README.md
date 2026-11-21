@@ -107,10 +107,15 @@ Hạn mức được đếm theo từng lần thật sự bấm Đổi, nằm tr
 | Ký tự toàn chiều rộng | `ＤＦＡＢＣ１２３` → `DFABC123` | có |
 | Chữ in đậm/nghiêng kiểu đặc biệt | `𝐃𝐅𝐀𝐁𝐂𝟏𝟐𝟑` → `DFABC123` | có |
 | Gạch ngang dài | `DF–ABC` → `DF-ABC` | có |
-| Chữ có dấu do bộ gõ Telex/VNI tự đổi | `DFƯEAPON` (gõ `w` ra `ư`), `DFđ…` (gõ `dd` ra `đ`) | không: tắt bộ gõ rồi gõ lại |
-| Ký tự đặc biệt giữa code | `DF.ABC123`, `DF@ABC123` | không |
+| Chữ có dấu do bộ gõ Telex/VNI tự đổi | `DFƯEAPON91` → `DFWEAPON91` (Telex `w` ra `ư`), `HEDELTAFORCẺ630` → `HEDELTAFORCE3630` (VNI `e3` ra `ẻ`) | có |
+| Ký tự đặc biệt giữa code | `DF.ABC123`, `DF@ABC123` → `DFABC123` | có |
+| Chữ khác bảng chữ, không giống chữ Latin | `DFФABC123` | không: sửa tay |
 
-Nút **Sửa tự động** chỉ sửa các loại chắc chắn (ký tự trông giống hệt chữ thường). Còn code có ký tự sai lúc bấm Bắt đầu thì popup hỏi lại. Chữ tiếng Việt bình thường, giá tiền, ngày tháng và email trong bài viết không bị báo nhầm.
+Code thật chỉ có chữ cái A–Z, a–z, số 0–9 và gạch dưới `_`. Trong 408 code đã biết, không code nào có dấu chấm, `@` hay chữ tiếng Việt, nên ký tự đặc biệt giữa code được bỏ đi.
+
+Chữ có dấu thì suy ngược phím đã gõ (Telex: `w`/`uw` → `ư`, `dd` → `đ`, `aa` → `â`, `as` → `á`…; VNI: `u7` → `ư`, `e3` → `ẻ`…). Một chữ có dấu có thể đến từ nhiều cách gõ, và Telex còn cho gõ phím dấu muộn (`GARENADF` gõ ra `GẢENÀD`). Vì vậy tiện ích thử mọi cách rồi **so với code đã biết** (Demo Code, log và code hợp lệ khác trong danh sách): khớp thì ghi "khớp code đã biết". Không khớp thì chọn cách giống code thật nhất, dựa trên cặp ký tự hay đi liền nhau trong các code đã biết, và ghi "đoán, cần xem lại". Khi thử gõ 408 Demo Code bằng Telex, tiện ích phát hiện đủ 293 code bị đổi, không nhập nhầm code nào, sửa đúng 93% khi code có trong danh sách đã biết và 74% khi là code mới hoàn toàn. Telex có lúc nuốt mất phím (gõ `ss` thành `s`) mà không để lại dấu, trường hợp đó không phát hiện được: an toàn nhất vẫn là tắt bộ gõ tiếng Việt khi gõ code.
+
+Nút **Sửa tự động** sửa mọi code sửa được, chỉ chừa chữ khác bảng chữ không giống chữ Latin. Code sửa bằng cách đoán được nhắc xem lại. Bấm Bắt đầu khi còn code sai thì popup hỏi lại. Chữ tiếng Việt bình thường (kể cả in hoa), giá tiền, ngày tháng, số có dấu phân cách và email trong bài viết không bị báo nhầm.
 
 ### Nhật ký
 

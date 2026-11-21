@@ -168,26 +168,77 @@
     return "chữ của bảng chữ khác";
   }
 
-  /* Chữ có dấu (thường do bộ gõ tiếng Việt Telex/VNI tự đổi khi gõ code): trả về chữ gốc không dấu. */
+  /* Dấu thanh tiếng Việt và phím tạo ra nó: Telex (s f r x j), VNI (1 2 3 4 5). */
+  const TONE_TELEX = { "\u0301": "s", "\u0300": "f", "\u0309": "r", "\u0303": "x", "\u0323": "j" };
+  const TONE_VNI = { "\u0301": "1", "\u0300": "2", "\u0309": "3", "\u0303": "4", "\u0323": "5" };
+  const COMBINING = /[\u0300-\u036F]/g;
+
   function baseLetter(ch) {
     if (ch === "đ") return "d";
     if (ch === "Đ") return "D";
-    const base = ch.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const base = ch.normalize("NFD").replace(COMBINING, "");
     return /^[A-Za-z]$/.test(base) ? base : "";
+  }
+
+  /* Các phím có thể đã gõ ra một chữ có dấu khi bộ gõ tiếng Việt đang bật, cách hay gặp nhất đứng đầu.
+   * Telex: "w" ra "ư", "uw" ra "ư", "aa" ra "â", "dd" ra "đ", "as" ra "á"… VNI: "u7" ra "ư", "e3" ra "ẻ"…
+   * upper: các chữ khác trong code viết hoa nên phím dấu cũng viết hoa. vniFirst: ngay sau là chữ số. */
+  function retypeAccent(ch, upper, vniFirst) {
+    const k = function (x) { return upper ? x.toUpperCase() : x; };
+    if (ch === "đ" || ch === "Đ") {
+      const d = ch === "Đ" ? "D" : "d";
+      const pairs = [{ body: d + k("d"), tone: "" }, { body: d + "9", tone: "" }];
+      return vniFirst ? pairs.reverse() : pairs;
+    }
+    const nfd = ch.normalize("NFD");
+    const base = nfd.charAt(0);
+    if (!/^[A-Za-z]$/.test(base)) return [];
+    const marks = nfd.slice(1);
+    let mod = "";
+    let modV = "";
+    let bare = "";
+    if (marks.indexOf("\u0302") !== -1) {
+      mod = k(base.toLowerCase());
+      modV = "6";
+    } else if (marks.indexOf("\u0306") !== -1) {
+      mod = k("w");
+      modV = "8";
+    } else if (marks.indexOf("\u031B") !== -1) {
+      mod = k("w");
+      modV = "7";
+      if (/u/i.test(base)) bare = base === "U" ? "W" : "w";
+    }
+    let tone = "";
+    let toneV = "";
+    for (let i = 0; i < marks.length; i++) {
+      if (TONE_TELEX[marks[i]]) {
+        tone = k(TONE_TELEX[marks[i]]);
+        toneV = TONE_VNI[marks[i]];
+      }
+    }
+    const telex = bare ? [{ body: bare, tone: tone }, { body: base + mod, tone: tone }] : [{ body: base + mod, tone: tone }];
+    const vni = [{ body: base + modV, tone: toneV }];
+    return vniFirst ? vni.concat(telex) : telex.concat(vni);
   }
 
   /* Xét từng ký tự không thuộc code trong một từ: loại lỗi, chữ thay thế, và có sửa tự động được không. */
   function inspectWord(word) {
+    const chars = Array.from(word);
+    const ascii = chars.filter(function (c) { return /^[A-Za-z]$/.test(c); });
+    const uppers = ascii.filter(function (c) { return c === c.toUpperCase(); }).length;
+    const mostlyUpper = uppers * 2 > ascii.length;
     let fixed = "";
     let fixable = true;
     const issues = [];
-    for (const ch of word) {
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
       if (/^[A-Za-z0-9_-]$/.test(ch)) {
         fixed += ch;
         continue;
       }
       let to = HOMOGLYPHS[ch] || "";
       let kind = to ? "homoglyph" : "";
+      let options = null;
       if (!kind && DASHES.test(ch)) {
         to = "-";
         kind = "dash";
@@ -200,16 +251,119 @@
           kind = c >= 0x2160 && c <= 0x2188 ? "roman" : c >= 0xFF00 && c <= 0xFFEF ? "fullwidth" : "styled";
         }
       }
-      if (!kind) {
-        to = baseLetter(ch);
-        if (to) kind = "accent";
+      if (!kind && baseLetter(ch)) {
+        /* Phím dấu viết hoa khi chính chữ đó viết hoa và code chủ yếu viết hoa ("DFLUÍHERE" → "IS");
+         * "TrickỎTreat" → "Or". Biến thể khác hoa/thường vẫn được thử khi so với code đã biết. */
+        const upperKey = ch !== ch.toLowerCase() && mostlyUpper;
+        const vniFirst = /^[0-9]$/.test(chars[i + 1] || "");
+        options = retypeAccent(ch, upperKey, vniFirst).concat(retypeAccent(ch, !upperKey, vniFirst));
+        options = options.filter(function (x, n) {
+          return options.findIndex(function (y) { return y.body === x.body && y.tone === x.tone; }) === n;
+        });
+        to = options.length ? options[0].body + options[0].tone : baseLetter(ch);
+        kind = "accent";
       }
-      if (!kind) kind = "special";
-      if (kind === "accent" || kind === "special") fixable = false;
+      /* Code thật chỉ có chữ, số và "_": dấu câu, ký hiệu giữa code (". @ / ·"…) bỏ đi được. */
+      if (!kind && /[\p{P}\p{S}]/u.test(ch)) kind = "special";
+      /* Chữ hay số của bảng chữ khác mà không giống chữ Latin: không đoán được, phải sửa tay. */
+      if (!kind) {
+        kind = "foreign";
+        fixable = false;
+      }
       fixed += to;
-      issues.push({ ch: ch, kind: kind, to: to });
+      const issue = { ch: ch, kind: kind, to: to, at: i };
+      if (options) issue.options = options;
+      issues.push(issue);
     }
-    return { fixed: fixed, fixable: fixable, issues: issues };
+    return { fixed: fixed, fixable: fixable, issues: issues, chars: chars, asciiLetters: ascii.length };
+  }
+
+  /* Mọi cách viết lại một từ có chữ có dấu (tối đa 256), để so với code đã biết. Với mỗi chữ có dấu, thử từng cách
+   * gõ (Telex, VNI, hoa/thường) và từng vị trí phím dấu thanh: ngay sau chữ đó, hoặc muộn hơn tối đa 4 chữ cái trong
+   * cùng cụm, vì Telex vẫn đặt dấu lên nguyên âm trước đó ("GARENADF" gõ ra "GẢENÀD": phím F nằm sau chữ D). */
+  function retypeCandidates(r) {
+    const accents = r.issues.filter(function (x) { return x.options && x.options.length; });
+    if (!accents.length) return [{ text: r.fixed, prior: 0 }];
+    const byAt = new Map();
+    r.issues.forEach(function (x) { byAt.set(x.at, x); });
+    const choices = accents.map(function (x) {
+      let room = 0;
+      for (let i = x.at + 1; i < r.chars.length && room < 4 && /^[A-Za-z]$/.test(r.chars[i]); i++) room++;
+      const list = [];
+      x.options.forEach(function (o) {
+        const last = o.tone ? room : 0;
+        const vni = /[0-9]/.test(o.body + o.tone);
+        for (let k = 0; k <= last; k++) {
+          const prior = Math.log(vni ? 0.1 : 0.9) + (k === 0 ? Math.log(0.6) : Math.log(0.4 / last));
+          list.push({ body: o.body, tone: o.tone, after: k, prior: prior });
+        }
+      });
+      return list;
+    });
+    const out = [];
+    const pick = new Array(accents.length).fill(0);
+    while (out.length < 256) {
+      const chosen = new Map();
+      accents.forEach(function (x, a) { chosen.set(x.at, choices[a][pick[a]]); });
+      let text = "";
+      let waiting = [];
+      for (let i = 0; i < r.chars.length; i++) {
+        const issue = byAt.get(i);
+        const c = chosen.get(i);
+        text += c ? c.body : issue ? issue.to : r.chars[i];
+        if (!c && /^[A-Za-z]$/.test(r.chars[i])) {
+          waiting = waiting.map(function (w) { return { tone: w.tone, left: w.left - 1 }; });
+        }
+        if (c && c.tone) waiting.push({ tone: c.tone, left: c.after });
+        waiting = waiting.filter(function (w) {
+          if (w.left > 0) return true;
+          text += w.tone;
+          return false;
+        });
+      }
+      waiting.forEach(function (w) { text += w.tone; });
+      let prior = 0;
+      chosen.forEach(function (c) { prior += c.prior; });
+      if (!out.some(function (o) { return o.text === text; })) out.push({ text: text, prior: prior });
+      let a = accents.length - 1;
+      while (a >= 0 && ++pick[a] >= choices[a].length) pick[a--] = 0;
+      if (a < 0) break;
+    }
+    return out;
+  }
+
+  /* Khi không khớp code đã biết nào, chọn cách viết lại giống code thật nhất: học từ các code đã biết xem cặp ký tự nào
+   * hay đi liền nhau (vd "DF" rất hay gặp, "FD" thì hiếm). Mô hình được nhớ theo từng tập code. */
+  const bigramCache = new WeakMap();
+  function bigramModel(known) {
+    if (!known || typeof known !== "object") return null;
+    if (bigramCache.has(known)) return bigramCache.get(known);
+    const pairs = new Map();
+    const singles = new Map();
+    let codes = 0;
+    known.forEach(function (code) {
+      if (!isCodeToken(code)) return;
+      codes++;
+      const t = "^" + code.toLowerCase() + "$";
+      for (let i = 0; i + 1 < t.length; i++) {
+        const ab = t.charAt(i) + t.charAt(i + 1);
+        pairs.set(ab, (pairs.get(ab) || 0) + 1);
+        singles.set(t.charAt(i), (singles.get(t.charAt(i)) || 0) + 1);
+      }
+    });
+    const model = codes >= 20 ? { pairs: pairs, singles: singles } : null;
+    bigramCache.set(known, model);
+    return model;
+  }
+
+  function bigramScore(model, text) {
+    const t = "^" + text.toLowerCase() + "$";
+    let score = 0;
+    for (let i = 0; i + 1 < t.length; i++) {
+      const ab = t.charAt(i) + t.charAt(i + 1);
+      score += Math.log(((model.pairs.get(ab) || 0) + 0.5) / ((model.singles.get(t.charAt(i)) || 0) + 20));
+    }
+    return score;
   }
 
   function letterCount(text) {
@@ -217,15 +371,60 @@
     return m ? m.length : 0;
   }
 
-  /* Một từ không phải code hợp lệ có phải là code bị gõ hoặc dán sai ký tự không. strict: dòng có nhiều chữ. */
-  function suspectOf(word, strict) {
+  /* Một từ không phải code hợp lệ có phải là code bị gõ hoặc dán sai ký tự không.
+   * strict: dòng có nhiều chữ. known: các code đã biết (Demo Code, log, code hợp lệ khác) để chọn cách sửa đúng. */
+  function suspectOf(word, strict, known) {
     if (isCodeToken(word)) return null;
     const r = inspectWord(word);
-    if (!r.issues.length || !isCodeToken(r.fixed) || letterCount(r.fixed) < 2) return null;
-    /* Ký tự trông giống hệt chữ Latin ở dòng chỉ có một từ thì gần như chắc là code; còn lại phải trông rõ là code. */
-    const likely = r.fixable && !strict ? r.fixed.length >= 4 : looksLikeCode(r.fixed);
+    if (!r.issues.length) return null;
+    let fixed = r.fixed;
+    let matched = false;
+    if (known && known.size) {
+      const candidates = retypeCandidates(r);
+      for (let i = 0; i < candidates.length; i++) {
+        if (known.has(candidates[i].text)) {
+          fixed = candidates[i].text;
+          matched = true;
+          break;
+        }
+      }
+      const model = !matched && candidates.length > 1 ? bigramModel(known) : null;
+      if (model) {
+        let best = -Infinity;
+        candidates.forEach(function (c) {
+          if (!isCodeToken(c.text)) return;
+          const score = bigramScore(model, c.text) + c.prior;
+          if (score > best) {
+            best = score;
+            fixed = c.text;
+          }
+        });
+      }
+    }
+    if (!isCodeToken(fixed) || letterCount(fixed) < 2) return null;
+    const textLike = r.issues.some(function (x) { return /^(?:accent|special|foreign)$/.test(x.kind); });
+    if (textLike && !matched) {
+      /* Chữ tiếng Việt, giá tiền, số có dấu phân cách ("Hết", "10.000đ", "1,5") không phải code gõ sai. */
+      if (r.asciiLetters < 2) return null;
+      const betweenDigits = r.issues.some(function (x) {
+        return x.kind === "special" && /^[0-9]$/.test(r.chars[x.at - 1] || "") && /^[0-9]$/.test(r.chars[x.at + 1] || "");
+      });
+      if (betweenDigits) return null;
+    }
+    /* Ký tự trông giống hệt chữ Latin ở dòng chỉ có một từ thì gần như chắc là code. Chữ có dấu, ký tự đặc biệt
+     * thì phải khớp code đã biết hoặc trông rõ là code, để không báo nhầm chữ tiếng Việt bình thường. */
+    const lookalikeOnly = r.issues.every(function (x) { return /^(?:homoglyph|roman|fullwidth|styled|dash)$/.test(x.kind); });
+    /* Xét "giống code" trên chữ gốc đã bỏ dấu, không trên bản đoán: cách gõ VNI chèn chữ số ("BIỆT" → "BIE65T")
+     * sẽ làm chữ tiếng Việt in hoa trông như code. */
+    let plain = "";
+    for (let i = 0; i < r.chars.length; i++) {
+      const issue = r.issues.find(function (x) { return x.at === i; });
+      plain += !issue ? r.chars[i] : issue.kind === "accent" ? baseLetter(r.chars[i]) : issue.to;
+    }
+    const likely = matched || (lookalikeOnly && !strict ? fixed.length >= 4 : looksLikeCode(lookalikeOnly ? fixed : plain));
     if (!likely) return null;
-    return { raw: word, fixed: r.fixed, fixable: r.fixable, issues: r.issues };
+    const guess = !matched && r.issues.some(function (x) { return x.kind === "accent" && x.options && x.options.length > 1; });
+    return { raw: word, fixed: fixed, fixable: r.fixable, matched: matched, guess: guess, issues: r.issues };
   }
 
   const ISSUE_TEXT = {
@@ -234,8 +433,9 @@
     fullwidth: function (i) { return "ký tự toàn chiều rộng “" + i.ch + "”, cần là “" + i.to + "”"; },
     styled: function (i) { return "chữ kiểu “" + i.ch + "” (in đậm/nghiêng đặc biệt), cần là “" + i.to + "”"; },
     dash: function (i) { return "gạch ngang dài “" + i.ch + "”, cần là gạch nối “-”"; },
-    accent: function (i) { return "chữ có dấu “" + i.ch + "” — thường do bộ gõ tiếng Việt (Telex/VNI) tự đổi khi gõ; tắt bộ gõ rồi gõ lại"; },
-    special: function (i) { return "ký tự “" + i.ch + "” không có trong code"; },
+    accent: function (i) { return "chữ có dấu “" + i.ch + "” do bộ gõ tiếng Việt (Telex/VNI) tự đổi khi gõ, gõ lại là “" + i.to + "”"; },
+    special: function (i) { return "ký tự “" + i.ch + "” không có trong code, bỏ đi"; },
+    foreign: function (i) { return "chữ “" + i.ch + "” không có trong code, cần sửa tay"; },
   };
 
   function describeIssue(issue) {
@@ -249,8 +449,9 @@
     fullwidth: "ký tự toàn chiều rộng, cần là chữ và số thường",
     styled: "chữ kiểu in đậm/nghiêng đặc biệt, cần là chữ thường",
     dash: "gạch ngang dài, cần là gạch nối “-”",
-    accent: "chữ có dấu — thường do bộ gõ tiếng Việt (Telex/VNI) tự đổi khi gõ; tắt bộ gõ rồi gõ lại",
-    special: "ký tự không có trong code",
+    accent: "chữ có dấu do bộ gõ tiếng Việt (Telex/VNI) tự đổi khi gõ",
+    special: "ký tự không có trong code, bỏ đi",
+    foreign: "chữ không có trong code, cần sửa tay",
   };
 
   /* Mô tả gọn một code có ký tự sai: gộp theo loại lỗi, mỗi loại kể tối đa 4 ký tự. */
@@ -291,9 +492,8 @@
         const word = clean[c];
         if (single ? isCodeToken(word) : looksLikeCode(word)) {
           out.push(word);
-        } else if (sink) {
-          const sus = suspectOf(word, !single);
-          if (sus) sink.push(sus);
+        } else if (sink && /[^A-Za-z0-9_-]/.test(word)) {
+          sink.push({ word: word, strict: !single });
         }
       }
     }
@@ -329,17 +529,18 @@
   /* Ký tự vô hình: khoảng trắng rỗng, nối chữ, chọn kiểu emoji, khung phím số. */
   const INVISIBLE = /[\u200B-\u200D\u2060\uFEFF\uFE00-\uFE0F\u20E3]/g;
 
-  /* Trả về code theo đúng thứ tự, bỏ trùng, kèm số dòng không nhận ra và các code có ký tự sai (không được nhập). */
-  function analyzeCodes(text) {
+  /* Trả về code theo đúng thứ tự, bỏ trùng, kèm số dòng không nhận ra và các code có ký tự sai (không được nhập).
+   * options.known: code đã biết (Demo Code, log) để chọn đúng cách sửa chữ có dấu. Code hợp lệ trong chính danh sách
+   * cũng được dùng, nên phải đọc hết danh sách rồi mới xét các từ nghi ngờ. */
+  function analyzeCodes(text, options) {
     let raw = String(text == null ? "" : text);
     if (raw.length > LIMITS.maxText) raw = raw.slice(0, LIMITS.maxText);
     raw = raw.replace(INVISIBLE, "");
     const seen = new Set();
     const codes = [];
-    const suspects = [];
-    const suspectSeen = new Set();
+    const pending = [];
+    const emptyLines = [];
     let duplicates = 0;
-    let ignored = 0;
     let truncated = false;
     const lines = raw.split(/\r\n|\r|\n/);
     for (let i = 0; i < lines.length && !truncated; i++) {
@@ -347,14 +548,9 @@
       if (!line || line.charAt(0) === "#" || line.indexOf("//") === 0) continue;
       const sink = [];
       const found = codesInLine(line, sink);
-      for (let s = 0; s < sink.length; s++) {
-        if (suspectSeen.has(sink[s].raw)) continue;
-        suspectSeen.add(sink[s].raw);
-        sink[s].line = i + 1;
-        suspects.push(sink[s]);
-      }
+      for (let s = 0; s < sink.length; s++) pending.push({ word: sink[s].word, strict: sink[s].strict, line: i + 1 });
       if (!found.length) {
-        if (!sink.length) ignored++;
+        emptyLines.push(i + 1);
         continue;
       }
       for (let f = 0; f < found.length; f++) {
@@ -371,6 +567,26 @@
         codes.push(code);
       }
     }
+    const known = new Set(codes);
+    const extra = options && options.known;
+    if (extra && typeof extra.forEach === "function") extra.forEach(function (c) { if (isCodeToken(c)) known.add(c); });
+    const suspects = [];
+    const verdict = new Map();
+    const suspectLines = new Set();
+    for (let p = 0; p < pending.length; p++) {
+      const item = pending[p];
+      if (!verdict.has(item.word)) {
+        const sus = suspectOf(item.word, item.strict, known);
+        verdict.set(item.word, !!sus);
+        if (sus) {
+          sus.line = item.line;
+          suspects.push(sus);
+        }
+      }
+      /* Dòng nào có code sai (kể cả code sai lặp lại) thì không tính là dòng không nhận ra. */
+      if (verdict.get(item.word)) suspectLines.add(item.line);
+    }
+    const ignored = emptyLines.filter(function (n) { return !suspectLines.has(n); }).length;
     return { codes: codes, duplicates: duplicates, ignored: ignored, truncated: truncated, suspects: suspects };
   }
 

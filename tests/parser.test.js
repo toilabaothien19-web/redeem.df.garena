@@ -591,7 +591,7 @@ test("không cắt mất chữ giống chữ Latin ở đầu hay cuối code r�
   }
 });
 
-test("phát hiện từng loại ký tự sai, sửa tự động khi chữ trông giống hệt chữ Latin", () => {
+test("phát hiện và sửa từng loại ký tự sai", () => {
   const cases = [
     ["DFАBC123", "DFABC123", true, "homoglyph"],
     ["GIVEMЕTHAT", "GIVEMETHAT", true, "homoglyph"],
@@ -601,10 +601,11 @@ test("phát hiện từng loại ký tự sai, sửa tự động khi chữ trô
     ["ＤＦＡＢＣ１２３", "DFABC123", true, "fullwidth"],
     ["\u{1D403}\u{1D405}\u{1D400}\u{1D401}\u{1D402}\u{1D7CF}\u{1D7D0}\u{1D7D1}", "DFABC123", true, "styled"],
     ["DF–ABC123", "DF-ABC123", true, "dash"],
-    ["DFƯEAPON91", "DFUEAPON91", false, "accent"],
-    ["DFđABC123", "DFdABC123", false, "accent"],
-    ["DF.ABC123", "DFABC123", false, "special"],
-    ["DF@ABC123", "DFABC123", false, "special"],
+    ["DFƯEAPON91", "DFWEAPON91", true, "accent"],
+    ["DFĐABC123", "DFDDABC123", true, "accent"],
+    ["DF.ABC123", "DFABC123", true, "special"],
+    ["DF@ABC123", "DFABC123", true, "special"],
+    ["DFФABC123", "DFABC123", false, "foreign"],
   ];
   for (const [text, fixed, fixable, kind] of cases) {
     const a = P.analyzeCodes(text);
@@ -644,16 +645,19 @@ test("dòng có code sai không bị tính là dòng không nhận ra; code sai 
   assert.equal(a.ignored, 1);
 });
 
-test("sửa tự động chỉ thay code sửa chắc được, giữ nguyên code cần sửa tay", () => {
+test("sửa tự động mọi code sửa được, giữ nguyên chữ không giống chữ Latin", () => {
   const text = "DFАBC123\nDFƯEAPON91\nＤＦ１２３４\nDFOK1234";
   const a = P.analyzeCodes(text);
   assert.equal(a.suspects.length, 3);
   const fixed = P.fixSuspects(text, a.suspects);
-  assert.equal(fixed, "DFABC123\nDFƯEAPON91\nDF1234\nDFOK1234");
+  assert.equal(fixed, "DFABC123\nDFWEAPON91\nDF1234\nDFOK1234");
   const b = P.analyzeCodes(fixed);
-  assert.deepEqual(b.codes, ["DFABC123", "DF1234", "DFOK1234"]);
-  assert.equal(b.suspects.length, 1);
-  assert.equal(b.suspects[0].fixable, false);
+  assert.deepEqual(b.codes, ["DFABC123", "DFWEAPON91", "DF1234", "DFOK1234"]);
+  assert.equal(b.suspects.length, 0);
+  // Chữ không giống chữ Latin (Ф) thì không tự sửa
+  const c = P.analyzeCodes("DFФABC123");
+  assert.equal(c.suspects[0].fixable, false);
+  assert.equal(P.fixSuspects("DFФABC123", c.suspects), "DFФABC123");
 });
 
 test("Demo Code không có code nào bị báo ký tự sai", () => {
@@ -677,4 +681,31 @@ test("sửa tự động cả code có ký tự vô hình chen giữa", () => {
   const fixed = P.fixSuspects(text, a.suspects);
   assert.equal(fixed, "DFABC123");
   assert.deepEqual(P.analyzeCodes(fixed).codes, ["DFABC123"]);
+});
+
+test("Telex/VNI: so với code đã biết để sửa đúng, kể cả phím dấu gõ muộn", () => {
+  const known = new Set(["WELCOMETODF", "DFLUISHERE", "TrickOrTreat", "HEDELTAFORCE3630", "GARENADFNY2501E034", "DFSL1983"]);
+  const cases = [
+    [String.fromCodePoint(0x1AF) + "ELCOMETODF", "WELCOMETODF"],
+    ["DFLU" + String.fromCodePoint(0xCD) + "HERE", "DFLUISHERE"],
+    ["Trick" + String.fromCodePoint(0x1ECE) + "Treat", "TrickOrTreat"],
+    ["HEDELTAFORC" + String.fromCodePoint(0x1EBA) + "630", "HEDELTAFORCE3630"],
+    ["G" + String.fromCodePoint(0x1EA2) + "EN" + String.fromCodePoint(0xC0) + "DNY2501E034", "GARENADFNY2501E034"],
+    ["DFSL.1983", "DFSL1983"],
+  ];
+  for (const [typed, want] of cases) {
+    const s = P.analyzeCodes(typed, { known }).suspects[0];
+    assert.equal(s.fixed, want, typed);
+    assert.equal(s.matched, true, typed);
+    assert.equal(s.guess, false, typed);
+  }
+  const g = P.analyzeCodes("DFA" + String.fromCodePoint(0x110) + "ON77", { known }).suspects[0];
+  assert.equal(g.fixed, "DFADDON77");
+  assert.equal(g.guess, true);
+});
+
+test("không báo nhầm câu tiếng Việt, giá tiền, số có dấu phân cách khi bật sửa Telex", () => {
+  const known = new Set(["DFWEAPON91", "DFSL1983"]);
+  const noise = ["Không", "Chào các bạn", "Giá 10.000đ", "Hết hạn 30/11", "email@gmail.com", "Tết 2026", "1.000.000VNĐ", "50.000VND", "Phiên bản v1.2.3", "Thưởng 100 brick, 1,5 triệu", "HÔM NAY CÓ CODE MỚI"];
+  for (const text of noise) assert.deepEqual(P.analyzeCodes(text, { known }).suspects, [], text);
 });

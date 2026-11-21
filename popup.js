@@ -14,7 +14,7 @@
   const el = {};
   [
     "ver", "status", "statusBox", "statusAction", "codes", "count", "parseNote", "pick", "demo", "clearCodes", "file",
-    "suspects", "suspectTitle", "suspectList", "suspectMore", "fixSuspects",
+    "suspects", "suspectTitle", "suspectList", "suspectMore", "suspectHint", "fixSuspects",
     "protect", "protectInfo", "freePace", "randomGap", "gapBlock", "gap", "gapValue", "skipLogged",
     "statTotal", "statFresh", "statQueue", "skipNote", "quota", "eta", "start", "stop", "progressBox", "barWrap", "bar", "runTally",
     "progress", "logCount", "fAll", "fOk", "fError", "fUnknown", "log", "logMore", "export", "importLog", "clearLog",
@@ -180,10 +180,24 @@
     });
   }
 
-  let analysisCache = { text: null, value: null };
+  /* Code đã biết (Demo Code và code trong log) giúp chọn đúng cách sửa code gõ sai ký tự. */
+  let knownCache = { log: null, value: null };
+  function knownCodes() {
+    if (knownCache.log !== model.log) {
+      const set = new Set(Array.isArray(window.DFDemoCodes) ? window.DFDemoCodes : []);
+      model.log.forEach(function (e) { if (e && P.isCodeToken(e.code)) set.add(e.code); });
+      knownCache = { log: model.log, value: set };
+    }
+    return knownCache.value;
+  }
+
+  let analysisCache = { text: null, known: null, value: null };
   function analysis() {
     const text = el.codes.value;
-    if (analysisCache.text !== text) analysisCache = { text: text, value: P.analyzeCodes(text) };
+    const known = knownCodes();
+    if (analysisCache.text !== text || analysisCache.known !== known) {
+      analysisCache = { text: text, known: known, value: P.analyzeCodes(text, { known: known }) };
+    }
     return analysisCache.value;
   }
 
@@ -301,6 +315,12 @@
         fix.className = "code fix";
         fix.textContent = " → " + sus.fixed;
         li.appendChild(fix);
+        if (sus.matched || sus.guess) {
+          const tag = document.createElement("span");
+          tag.className = sus.matched ? "tag-ok" : "tag-guess";
+          tag.textContent = sus.matched ? " ✔ khớp code đã biết" : " (đoán, cần xem lại)";
+          li.appendChild(tag);
+        }
       }
       const why = document.createElement("span");
       why.className = "why";
@@ -311,8 +331,13 @@
     el.suspectList.appendChild(frag);
     el.suspectMore.hidden = list.length <= SUSPECT_VIEW;
     put(el.suspectMore, list.length > SUSPECT_VIEW ? "Và " + (list.length - SUSPECT_VIEW) + " code khác." : "");
+    const guesses = list.filter(function (s) { return s.fixable && s.guess; }).length;
+    el.suspectHint.hidden = !guesses;
+    put(el.suspectHint, guesses
+      ? guesses + " code có dấu được đoán lại theo cách gõ Telex/VNI và không khớp code nào đã biết. Kiểm tra lại trước khi bắt đầu, vì đoán sai vẫn tốn một lần thử."
+      : "");
     el.fixSuspects.hidden = !fixable;
-    put(el.fixSuspects, "Sửa tự động " + fixable + " code" + (fixable < list.length ? " (chữ trông giống chữ Latin)" : ""));
+    put(el.fixSuspects, "Sửa tự động " + fixable + " code");
   }
 
   function renderPlan(now) {
@@ -657,7 +682,9 @@
     if (!fixable.length) return;
     setCodes(P.fixSuspects(el.codes.value, fixable));
     const left = analysis().suspects.length;
-    flash("Đã sửa " + fixable.length + " code." + (left ? " Còn " + left + " code cần tự sửa tay." : " Kiểm tra lại danh sách trước khi bắt đầu."), "ok");
+    const guessed = fixable.filter(function (s) { return s.guess; }).length;
+    flash("Đã sửa " + fixable.length + " code." + (left ? " Còn " + left + " code cần tự sửa tay." : "")
+      + (guessed ? " " + guessed + " code là đoán theo bộ gõ, kiểm tra lại trước khi bắt đầu." : " Kiểm tra lại danh sách trước khi bắt đầu."), guessed ? "warn" : "ok");
   });
 
   el.clearCodes.addEventListener("click", async function () {

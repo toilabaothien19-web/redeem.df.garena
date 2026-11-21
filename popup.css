@@ -212,6 +212,8 @@ button:focus-visible {
 }
 
 .suspect-list .fix { color: var(--ok); }
+.suspect-list .tag-ok { color: var(--ok); font-size: 10.5px; }
+.suspect-list .tag-guess { color: var(--warn); font-size: 10.5px; }
 .suspect-list .why { display: block; color: var(--muted); }
 .suspects button { margin-top: 8px; }
 
