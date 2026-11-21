@@ -18,6 +18,28 @@
   const REDEEM_PAGE = "https://redeem.df.garena.sg/vi/cdkgarena.html";
   const REDEEM_PATH = /^\/(?:[^/]+\/)?cdkgarena\.html$/i;
 
+  /* Hai trang đổi code: Garena (mặc định) và trang quốc tế của Level Infinite (thử nghiệm). */
+  const SITES = Object.freeze({
+    garena: Object.freeze({
+      id: "garena",
+      label: "Garena",
+      host: "redeem.df.garena.sg",
+      page: "https://redeem.df.garena.sg/vi/cdkgarena.html",
+      path: /^\/(?:[^/]+\/)?cdkgarena\.html$/i,
+    }),
+    intl: Object.freeze({
+      id: "intl",
+      label: "quốc tế",
+      host: "www.playdeltaforce.com",
+      page: "https://www.playdeltaforce.com/vi/cdkredeem.html",
+      path: /^\/(?:[^/]+\/)?cdkredeem\.html$/i,
+    }),
+  });
+
+  function normSite(site) {
+    return site === "intl" ? "intl" : "garena";
+  }
+
   const KEYS = Object.freeze({
     draft: "dfcode.draft",
     gap: "dfcode.gap",
@@ -29,6 +51,7 @@
     run: "dfcode.run",
     attempts: "dfcode.attempts",
     stop: "dfcode.stop",
+    edition: "dfcode.edition",
   });
   /* Khóa của bản cũ, xóa khi gặp. */
   const LEGACY_KEYS = Object.freeze(["dfcode.restUntil", "dfcode.skipOk"]);
@@ -786,12 +809,17 @@
 
   /* ---------- Kế hoạch một lần bấm Bắt đầu ---------- */
 
-  function settledCodes(log) {
+  /* Lượt log thuộc bản nào (log cũ không ghi bản là của Garena). site rỗng: mọi bản. */
+  function onSite(e, site) {
+    return !site || normSite(e && e.site) === normSite(site);
+  }
+
+  function settledCodes(log, site) {
     const done = new Set();
     const list = Array.isArray(log) ? log : [];
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
-      if (e && (e.status === "ok" || e.status === "error") && isCodeToken(e.code)) done.add(e.code);
+      if (e && (e.status === "ok" || e.status === "error") && isCodeToken(e.code) && onSite(e, site)) done.add(e.code);
     }
     return done;
   }
@@ -802,12 +830,13 @@
     const codes = Array.isArray(opts.codes) ? opts.codes : [];
     const s = normalizeSettings(opts.settings);
     const p = profileFor(s.protect);
-    const done = s.skipLogged ? settledCodes(opts.log) : new Set();
+    const site = opts.site || "";
+    const done = s.skipLogged ? settledCodes(opts.log, site) : new Set();
     /* Code chưa từng có trong log nhập trước; code đã có (vd từng ghi chưa rõ) xếp xuống cuối,
      * để một code cứ gặp lỗi tạm thời không chặn các code mới ở mỗi lần chạy. */
     const seen = new Set();
     const logList = Array.isArray(opts.log) ? opts.log : [];
-    for (let i = 0; i < logList.length; i++) if (logList[i] && isCodeToken(logList[i].code)) seen.add(logList[i].code);
+    for (let i = 0; i < logList.length; i++) if (logList[i] && isCodeToken(logList[i].code) && onSite(logList[i], site)) seen.add(logList[i].code);
     const pending = codes.filter(function (c) { return !done.has(c); });
     const fresh = pending.filter(function (c) { return !seen.has(c); }).concat(pending.filter(function (c) { return seen.has(c); }));
     const g = gate(opts.attempts, s.protect, now);
@@ -910,6 +939,11 @@
     return isAccountRisk(value) || TRANSIENT_TEXT.test(value) || TRANSIENT_CODE_SUFFIX.test(value);
   }
 
+  /* Cả hai trang đổi code (cùng máy chủ sg-act.playerinfinite.com) không coi 601008, 503601 là lỗi và không báo gì;
+   * 300001 là hết phiên đăng nhập (trang tự đăng xuất rồi tải lại).
+   * Không rõ nghĩa nên ghi "chưa rõ": không tính là lỗi, lần sau vẫn nhập lại. */
+  const SILENT_CODES = [601008, 503601, 300001];
+
   /* Mã số và câu chữ mâu thuẫn nhau thì ghi "chưa xác định", không đoán. */
   function describeApi(raw) {
     if (!raw || typeof raw !== "object") return { ok: false, status: "unknown", serverCode: null, detail: "", httpStatus: 0 };
@@ -935,7 +969,8 @@
     const failed = looksFailed(exact);
     const success = looksOk(exact);
     let status = "unknown";
-    if (serverCode === 0 && failed) status = "unknown";
+    if (SILENT_CODES.indexOf(serverCode) !== -1) status = "unknown";
+    else if (serverCode === 0 && failed) status = "unknown";
     else if (serverCode === 0) status = "ok";
     else if (serverCode !== null && success) status = "unknown";
     else if (serverCode !== null) status = "error";
@@ -959,7 +994,7 @@
   }
 
   /* Đổi kết quả thô từ trang thành một dòng log. */
-  function toEntry(code, result, now) {
+  function toEntry(code, result, now, site) {
     if (!isCodeToken(code)) return null;
     const r = result && typeof result === "object" ? result : {};
     let status = "unknown";
@@ -990,6 +1025,7 @@
       status: status,
       detail: sanitizeText(detail),
       serverCode: serverCode,
+      site: normSite(site),
     };
   }
 
@@ -1069,6 +1105,7 @@
       status: status,
       detail: detail || (status === "ok" ? "Dùng được (từ log)." : status === "unknown" ? UNKNOWN_TEXT : "Lỗi (từ log)."),
       serverCode: typeof e.serverCode === "number" && Number.isFinite(e.serverCode) ? e.serverCode : null,
+      site: normSite(e.site),
     };
   }
 
@@ -1131,8 +1168,8 @@
   }
 
   /* Đối chiếu danh sách code với log: mỗi code theo trạng thái tốt nhất trong log, hoặc chưa có. */
-  function overlap(codes, log) {
-    const best = bestByCode(log);
+  function overlap(codes, log, site) {
+    const best = bestByCode((Array.isArray(log) ? log : []).filter(function (e) { return e && onSite(e, site); }));
     const out = { ok: 0, error: 0, unknown: 0, fresh: 0 };
     const list = Array.isArray(codes) ? codes : [];
     for (let i = 0; i < list.length; i++) {
@@ -1146,16 +1183,6 @@
   function formatLog(entries, meta) {
     const list = Array.isArray(entries) ? entries.filter(Boolean) : [];
     const info = meta || {};
-    const best = bestByCode(list);
-    const ok = [];
-    const bad = [];
-    const wait = [];
-    best.forEach(function (e) {
-      const st = normStatus(e.status);
-      if (st === "ok") ok.push(e);
-      else if (st === "error") bad.push(e);
-      else wait.push(e);
-    });
     const count = tally(list);
     const lines = [];
     lines.push("DF Code Garena — nhật ký đổi code");
@@ -1164,37 +1191,65 @@
     if (info.settings) lines.push("Chế độ: " + describePace(info.settings));
     lines.push("Tổng: " + count.all + " lượt, " + count.ok + " dùng được, " + count.error + " lỗi, " + count.unknown + " chưa rõ");
     lines.push("");
-    lines.push("=== DÙNG ĐƯỢC (" + ok.length + ") ===");
-    if (!ok.length) lines.push("(không có)");
-    for (let a = 0; a < ok.length; a++) lines.push(ok[a].code);
-    lines.push("");
-    lines.push("=== LỖI (" + bad.length + ") ===");
-    if (!bad.length) lines.push("(không có)");
-    for (let b = 0; b < bad.length; b++) lines.push(bad[b].code + "\t" + sanitizeText(bad[b].detail));
-    lines.push("");
-    lines.push("=== CHƯA RÕ (" + wait.length + ") — sẽ nhập lại ở lần chạy sau ===");
-    if (!wait.length) lines.push("(không có)");
-    for (let w = 0; w < wait.length; w++) lines.push(wait[w].code + "\t" + sanitizeText(wait[w].detail));
-    lines.push("");
+    /* Mỗi bản một bộ mục tóm tắt. Mục của bản quốc tế có chữ "QUỐC TẾ —" ở đầu, lượt ở CHI TIẾT có "QT" trước giờ. */
+    const intlList = list.filter(function (e) { return normSite(e.site) === "intl"; });
+    const garenaList = list.filter(function (e) { return normSite(e.site) !== "intl"; });
+    const groups = [{ prefix: "", list: garenaList }];
+    if (intlList.length) groups.push({ prefix: "QUỐC TẾ — ", list: intlList });
+    for (let g = 0; g < groups.length; g++) {
+      const ok = [];
+      const bad = [];
+      const wait = [];
+      bestByCode(groups[g].list).forEach(function (e) {
+        const st = normStatus(e.status);
+        if (st === "ok") ok.push(e);
+        else if (st === "error") bad.push(e);
+        else wait.push(e);
+      });
+      const pre = groups[g].prefix;
+      lines.push("=== " + pre + "DÙNG ĐƯỢC (" + ok.length + ") ===");
+      if (!ok.length) lines.push("(không có)");
+      for (let a = 0; a < ok.length; a++) lines.push(ok[a].code);
+      lines.push("");
+      lines.push("=== " + pre + "LỖI (" + bad.length + ") ===");
+      if (!bad.length) lines.push("(không có)");
+      for (let b = 0; b < bad.length; b++) lines.push(bad[b].code + "\t" + sanitizeText(bad[b].detail));
+      lines.push("");
+      lines.push("=== " + pre + "CHƯA RÕ (" + wait.length + ") — sẽ nhập lại ở lần chạy sau ===");
+      if (!wait.length) lines.push("(không có)");
+      for (let w = 0; w < wait.length; w++) lines.push(wait[w].code + "\t" + sanitizeText(wait[w].detail));
+      lines.push("");
+    }
     lines.push("=== CHI TIẾT ===");
     if (!list.length) lines.push("(chưa có lượt nhập nào)");
     for (let n = 0; n < list.length; n++) {
       const e = list[n];
       const status = normStatus(e.status);
       const tag = status === "ok" ? "OK" : status === "unknown" ? "CHƯA" : "LỖI";
-      lines.push("[" + tag + "] " + (entryTime(e) || "—") + "  " + e.code + "  —  " + sanitizeText(e.detail));
+      const where = normSite(e.site) === "intl" ? "QT " : "";
+      lines.push("[" + tag + "] " + where + (entryTime(e) || "—") + "  " + e.code + "  —  " + sanitizeText(e.detail));
     }
     lines.push("");
     return lines.join("\n");
   }
 
+  const INTL_SECTION = /^(?:QUỐC TẾ|QUOC TE)\s*[—-]\s*/i;
+
+  /* Tên mục trong file log: loại mục và bản (mục của bản quốc tế bắt đầu bằng "QUỐC TẾ —"). */
   function sectionOf(line) {
-    if (/^===\s*(?:DÙNG ĐƯỢC|DUNG DUOC)/i.test(line)) return "ok";
-    if (/^===\s*(?:LỖI|LOI)/i.test(line)) return "error";
-    if (/^===\s*(?:CHI TIẾT|CHI TIET)/i.test(line)) return "detail";
-    if (/^===\s*(?:CHƯA RÕ|CHUA RO)/i.test(line)) return "unknown";
-    if (/^===/.test(line)) return "other";
-    return "";
+    if (!/^===/.test(line)) return null;
+    let rest = line.replace(/^===\s*/, "");
+    let site = "garena";
+    if (INTL_SECTION.test(rest)) {
+      site = "intl";
+      rest = rest.replace(INTL_SECTION, "");
+    }
+    let kind = "other";
+    if (/^(?:DÙNG ĐƯỢC|DUNG DUOC)/i.test(rest)) kind = "ok";
+    else if (/^(?:LỖI|LOI)/i.test(rest)) kind = "error";
+    else if (/^(?:CHI TIẾT|CHI TIET)/i.test(rest)) kind = "detail";
+    else if (/^(?:CHƯA RÕ|CHUA RO)/i.test(rest)) kind = "unknown";
+    return { kind: kind, site: site };
   }
 
   const DETAIL_RE = /^\[(OK|LỖI|LOI|ERROR|CHƯA|CHUA)\]\s*(.*?)\s{2,}([A-Za-z0-9_-]{4,80})\s+[—-](?:\s+(.*))?$/i;
@@ -1205,6 +1260,7 @@
     if (raw.length > LIMITS.maxLogText) raw = raw.slice(0, LIMITS.maxLogText);
     const lines = raw.split(/\r\n|\r|\n/);
     let section = "";
+    let sectionSite = "garena";
     const fromDetail = [];
     const fromSections = [];
     for (let i = 0; i < lines.length; i++) {
@@ -1212,7 +1268,8 @@
       if (!line || line.length > 700 || line.charAt(0) === "#") continue;
       const next = sectionOf(line);
       if (next) {
-        section = next;
+        section = next.kind;
+        sectionSite = next.site;
         continue;
       }
       if (/^\((?:không có|khong co|chưa có lượt nhập nào|chua co luot nhap nao)\)$/i.test(line)) continue;
@@ -1220,19 +1277,25 @@
         const m = line.match(DETAIL_RE);
         if (!m) continue;
         const tag = m[1].toUpperCase();
-        const time = m[2].trim();
+        let time = m[2].trim();
+        let site = "garena";
+        if (/^QT(?:\s|$)/.test(time)) {
+          site = "intl";
+          time = time.slice(2).trim();
+        }
         fromDetail.push({
+          site: site,
           atText: time === "—" || time === "-" ? "" : time,
           code: m[3],
           status: tag === "OK" ? "ok" : tag === "CHƯA" || tag === "CHUA" ? "unknown" : "error",
           detail: m[4] || "",
         });
       } else if (section === "ok") {
-        if (isCodeToken(line)) fromSections.push({ code: line, status: "ok", detail: "Dùng được (từ log)." });
+        if (isCodeToken(line)) fromSections.push({ code: line, status: "ok", detail: "Dùng được (từ log).", site: sectionSite });
       } else if (section === "error" || section === "unknown") {
         const bits = line.indexOf("\t") === -1 ? line.split(/\s{2,}/) : line.split("\t");
         const code = bits[0].trim();
-        if (isCodeToken(code)) fromSections.push({ code: code, status: section, detail: bits.slice(1).join(" ") });
+        if (isCodeToken(code)) fromSections.push({ code: code, status: section, detail: bits.slice(1).join(" "), site: sectionSite });
       }
     }
     const out = [];
@@ -1240,13 +1303,14 @@
     for (let d = 0; d < fromDetail.length; d++) {
       const e = normalizeEntry(fromDetail[d]);
       if (!e) continue;
-      known.add(e.code + "|" + e.status);
+      known.add(e.site + "|" + e.code + "|" + e.status);
       out.push(e);
     }
+    /* Code chỉ có ở phần tóm tắt (vd phần CHI TIẾT bị cắt) mới được thêm. */
     for (let s = 0; s < fromSections.length; s++) {
       const e = normalizeEntry(fromSections[s]);
-      if (!e || known.has(e.code + "|" + e.status)) continue;
-      known.add(e.code + "|" + e.status);
+      if (!e || known.has(e.site + "|" + e.code + "|" + e.status)) continue;
+      known.add(e.site + "|" + e.code + "|" + e.status);
       out.push(e);
     }
     return out;
@@ -1263,7 +1327,7 @@
       for (let i = 0; i < list.length; i++) {
         const e = normalizeEntry(list[i]);
         if (!e) continue;
-        const key = e.code + "|" + e.status + "|" + entryTime(e);
+        const key = e.site + "|" + e.code + "|" + e.status + "|" + entryTime(e);
         if (keys.has(key)) continue;
         keys.add(key);
         out.push(e);
@@ -1295,19 +1359,34 @@
     return t - (Number(run.updatedAt) || 0) < LIMITS.staleMs;
   }
 
-  function isRedeemUrl(url) {
+  /* Trang đổi code nào ("garena" hoặc "intl"), hoặc "" nếu không phải trang đổi code. */
+  function siteOf(url) {
     try {
       const u = new URL(String(url || ""));
-      return u.protocol === "https:" && u.hostname === REDEEM_HOST && REDEEM_PATH.test(u.pathname);
+      if (u.protocol !== "https:") return "";
+      const ids = Object.keys(SITES);
+      for (let i = 0; i < ids.length; i++) {
+        const site = SITES[ids[i]];
+        if (u.hostname === site.host && site.path.test(u.pathname)) return site.id;
+      }
+      return "";
     } catch (e) {
-      return false;
+      return "";
     }
+  }
+
+  function isRedeemUrl(url) {
+    return !!siteOf(url);
   }
 
   return Object.freeze({
     REDEEM_HOST: REDEEM_HOST,
     REDEEM_PAGE: REDEEM_PAGE,
     REDEEM_PATH: REDEEM_PATH,
+    SITES: SITES,
+    normSite: normSite,
+    siteOf: siteOf,
+    onSite: onSite,
     KEYS: KEYS,
     LEGACY_KEYS: LEGACY_KEYS,
     LIMITS: LIMITS,

@@ -1,8 +1,9 @@
-DF Code Garena 1.0.3
+DF Code Garena 1.1.0
 ====================
 
 Tiện ích chỉ nhập code khi tab Trung Tâm Đổi Quà đang mở:
-https://redeem.df.garena.sg/vi/cdkgarena.html
+- Bản Garena: https://redeem.df.garena.sg/vi/cdkgarena.html
+- Bản quốc tế (thử nghiệm): https://www.playdeltaforce.com/vi/cdkredeem.html
 
 Chỉ tải từ https://github.com/toilabaothien19-web/redeem.df.garena
 
@@ -18,8 +19,9 @@ Cài trên máy tính (Chrome hoặc Edge 111 trở lên)
    File SHA256SUMS trong zip chỉ chứng minh các file khớp nhau; hãy so nó với file SHA256SUMS trên GitHub.
 
 Dùng
-1. Mở trang đổi code và đăng nhập Garena. Tiện ích không hỏi mật khẩu.
-2. Bấm biểu tượng DF. Nếu popup báo cần tải lại, bấm Tải lại hoặc F5 trên trang.
+1. Mở trang đổi code và đăng nhập. Tiện ích không hỏi mật khẩu.
+2. Bấm biểu tượng DF. Chọn Bản Garena hoặc Bản quốc tế (thử nghiệm) ở hai nút trên ô danh sách code.
+   Nếu popup báo cần tải lại, bấm Tải lại hoặc F5 trên trang.
 3. Dán code hoặc bấm Mở file .txt. Mỗi dòng một code. Dòng bắt đầu bằng # được bỏ qua.
    Code có ký tự sai (chữ Nga/Hy Lạp trông giống chữ Latin, số La Mã, chữ toàn chiều rộng, chữ có dấu
    do bộ gõ Telex/VNI, ký tự đặc biệt) được báo dưới ô danh sách và không được nhập. Bấm Sửa tự động
@@ -39,6 +41,13 @@ Dùng
    không còn được bỏ qua khi chạy lại, nên xuất log trước khi xóa.
 9. Bấm Tải log lên để nạp lại file đó (tối đa 2 MB). Popup cho biết bao nhiêu code trong danh sách
    đã có trong log. Lần chạy sau bỏ qua code đã thành công và code lỗi.
+
+Bản quốc tế (thử nghiệm)
+- Trang đổi quà của Level Infinite. Đăng nhập trên trang trước (Log In: Google, Facebook, Discord...).
+- Chỉ đổi bằng tài khoản đã đăng nhập. Không dùng ô UID, vì cách đó cần captcha.
+- Code hai bản không dùng chung (hai mã game khác nhau). Demo Code là code Garena nên bị tắt ở bản này.
+- Chưa thử trên tài khoản thật. Gặp kết quả lạ, captcha hoặc mất đăng nhập thì tiện ích dừng và ghi chưa rõ.
+- Hạn mức bảo vệ tính chung cho hai bản. Log ghi "QT" trước lượt của bản quốc tế.
 
 Bảo mật
 - Mã tiện ích được viết riêng cho việc này. Không nhúng thư viện hay mã nguồn bên ngoài.

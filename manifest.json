@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "DF Code Garena",
-  "version": "1.0.3",
-  "description": "Nhập danh sách code Delta Force trên trang đổi quà Garena. Chỉ chạy khi trang đó đang mở.",
+  "version": "1.1.0",
+  "description": "Nhập danh sách code Delta Force trên trang đổi quà Garena, hoặc trang đổi quà quốc tế (thử nghiệm). Chỉ chạy khi trang đó đang mở.",
   "homepage_url": "https://github.com/toilabaothien19-web/redeem.df.garena",
   "minimum_chrome_version": "111",
   "incognito": "split",
@@ -31,7 +31,9 @@
     {
       "matches": [
         "https://redeem.df.garena.sg/*/cdkgarena.html*",
-        "https://redeem.df.garena.sg/cdkgarena.html*"
+        "https://redeem.df.garena.sg/cdkgarena.html*",
+        "https://www.playdeltaforce.com/*/cdkredeem.html*",
+        "https://www.playdeltaforce.com/cdkredeem.html*"
       ],
       "js": ["inject.js"],
       "world": "MAIN",
@@ -41,7 +43,9 @@
     {
       "matches": [
         "https://redeem.df.garena.sg/*/cdkgarena.html*",
-        "https://redeem.df.garena.sg/cdkgarena.html*"
+        "https://redeem.df.garena.sg/cdkgarena.html*",
+        "https://www.playdeltaforce.com/*/cdkredeem.html*",
+        "https://www.playdeltaforce.com/cdkredeem.html*"
       ],
       "js": ["parser.js", "runner.js"],
       "run_at": "document_start",

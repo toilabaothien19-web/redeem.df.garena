@@ -2,9 +2,27 @@
 
 Từ bản 1.0.0, số phiên bản được đánh lại. Mã trước khi viết lại, trước đây đánh số 1.9.9, nay là **0.5.0 beta**. Các mốc cũ 1.0 đến 1.9.9 vẫn giữ ở cuối file với số cũ, chỉ để tra cứu.
 
-## 1.0.3
+## 1.1.0
 
-Phát hiện ký tự sai trong code.
+Thêm bản quốc tế (thử nghiệm) và phát hiện ký tự sai trong code. Bản 1.0.3 không phát hành riêng; mọi thay đổi của nó nằm trong bản này.
+
+Bản quốc tế (thử nghiệm)
+
+- Popup có hai nút ngay trên ô danh sách code: **Bản Garena** và **Bản quốc tế (thử nghiệm)**, kèm ghi chú cho từng bản. Lựa chọn được nhớ; đang chạy thì không đổi được.
+- Bản quốc tế chạy trên trang đổi quà của Level Infinite: https://www.playdeltaforce.com/vi/cdkredeem.html (mọi ngôn ngữ của trang). Manifest thêm đúng trang này vào `content_scripts`; quyền vẫn chỉ có `storage` và `activeTab`.
+- Chỉ đổi bằng tài khoản đã đăng nhập trên trang (nút Redeem ở thẻ tài khoản). Không dùng cách đổi bằng UID vì cách đó cần captcha Tencent. Trang còn ở chế độ UID (chưa đăng nhập) thì tiện ích không bấm. Đang ở thẻ UID khi đã đăng nhập thì tự chuyển sang thẻ tài khoản.
+- Đã đối chiếu mã của hai trang: cùng khung giao diện, cùng máy chủ đổi code (`sg-act.playerinfinite.com`, `RedeemCDKey`) và cùng câu tiếng Việt, nhưng gửi cho hai mã game khác nhau (Garena `30150`, quốc tế `29158`). Vì vậy code hai bản không dùng chung. Demo Code là code Garena nên bị tắt ở bản quốc tế.
+- Log ghi bản của từng lượt. "Bỏ qua code đã có trong log" và phần đối chiếu chỉ tính lượt của cùng bản. Log cũ không ghi bản được tính là của Garena.
+- File log: lượt của bản quốc tế có `QT` trước giờ ở phần CHI TIẾT, và có mục tóm tắt riêng `=== QUỐC TẾ — DÙNG ĐƯỢC / LỖI / CHƯA RÕ ===`. Log chỉ có Garena thì giống hệt bản trước.
+- Tab đang mở là trang của bản kia thì popup báo và có nút chuyển bản. Bấm Bắt đầu ở bản quốc tế thì popup hỏi lại. Runner từ chối chạy nếu bản trong popup khác trang đang mở.
+- Hạn mức bảo vệ tính chung cho cả hai bản.
+
+Cả hai bản
+
+- Mã 601008 và 503601 (trang không coi là lỗi và không báo gì) và 300001 (hết phiên, trang tự đăng xuất) giờ ghi **chưa rõ** và dừng, không ghi lỗi. Trước đây ở trang Garena các mã này bị ghi lỗi và code bị bỏ qua vĩnh viễn.
+- Captcha Tencent của trang quốc tế chỉ được tính khi đang hiện trên màn hình.
+
+Ký tự sai trong code
 
 - **Sửa lỗi của 1.0.2:** chữ trông giống chữ Latin nằm ở đầu hoặc cuối code bị cắt mất, khiến tiện ích nhập nhầm một code khác (`АBC123` với A Kirin thành `BC123`; `DFABC12З` thành `DFABC12`), tốn một lần thử. Giờ chỉ cắt emoji, dấu câu, ký hiệu ở hai đầu.
 - Code có ký tự sai không được nhập và được liệt kê dưới ô danh sách, tô màu đúng ký tự sai, kèm lý do và số dòng: chữ Kirin/Hy Lạp trông giống chữ Latin, số La Mã, ký tự toàn chiều rộng, chữ in đậm/nghiêng kiểu đặc biệt, gạch ngang dài, chữ có dấu do bộ gõ Telex/VNI, ký tự đặc biệt giữa code.

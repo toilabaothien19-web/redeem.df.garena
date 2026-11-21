@@ -36,6 +36,8 @@ const EXTRA_IN_ZIP = ["SHA256SUMS", "HUONG-DAN.txt"];
 const ALLOWED_URLS = [
   /^https:\/\/redeem\.df\.garena\.sg\/(?:\*\/)?cdkgarena\.html\*?$/,
   /^https:\/\/redeem\.df\.garena\.sg\/vi\/cdkgarena\.html$/,
+  /^https:\/\/www\.playdeltaforce\.com\/(?:\*\/)?cdkredeem\.html\*?$/,
+  /^https:\/\/www\.playdeltaforce\.com\/vi\/cdkredeem\.html$/,
   /^https:\/\/github\.com\/toilabaothien19-web\/redeem\.df\.garena$/,
 ];
 
@@ -100,13 +102,21 @@ function audit() {
   }
   const csp = (manifest.content_security_policy || {}).extension_pages || "";
   if (!/connect-src 'none'/.test(csp)) fail("manifest: CSP phải có connect-src 'none'");
+  /* Chỉ hai trang đổi code: Garena và trang quốc tế. Hai content script phải chạy trên đúng cùng các trang. */
+  const PAGE_MATCH = [
+    /^https:\/\/redeem\.df\.garena\.sg\/(?:\*\/)?cdkgarena\.html\*$/,
+    /^https:\/\/www\.playdeltaforce\.com\/(?:\*\/)?cdkredeem\.html\*$/,
+  ];
+  const matchSets = new Set();
   for (const cs of manifest.content_scripts || []) {
     for (const m of cs.matches || []) {
-      if (!/^https:\/\/redeem\.df\.garena\.sg\//.test(m) || !/cdkgarena\.html\*$/.test(m)) fail(`manifest: content script khớp trang lạ ${m}`);
+      if (!PAGE_MATCH.some((re) => re.test(m))) fail(`manifest: content script khớp trang lạ ${m}`);
     }
+    matchSets.add([...(cs.matches || [])].sort().join(" "));
     if (cs.all_frames) fail("manifest: content script không được chạy trong mọi frame");
     for (const f of cs.js || []) if (!existsSync(join(ROOT, f))) fail(`manifest: thiếu file ${f}`);
   }
+  if (matchSets.size > 1) fail("manifest: inject.js và runner.js phải chạy trên cùng các trang");
   const html = readText("popup.html");
   for (const m of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
     if (/^[a-z]+:/i.test(m[1])) fail(`popup.html: tài nguyên ngoài ${m[1]}`);

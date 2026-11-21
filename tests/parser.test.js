@@ -709,3 +709,97 @@ test("không báo nhầm câu tiếng Việt, giá tiền, số có dấu phân 
   const noise = ["Không", "Chào các bạn", "Giá 10.000đ", "Hết hạn 30/11", "email@gmail.com", "Tết 2026", "1.000.000VNĐ", "50.000VND", "Phiên bản v1.2.3", "Thưởng 100 brick, 1,5 triệu", "HÔM NAY CÓ CODE MỚI"];
   for (const text of noise) assert.deepEqual(P.analyzeCodes(text, { known }).suspects, [], text);
 });
+
+/* ---------- Hai bản: Garena và quốc tế ---------- */
+
+test("nhận đúng trang đổi code của từng bản", () => {
+  assert.equal(P.siteOf("https://redeem.df.garena.sg/vi/cdkgarena.html"), "garena");
+  assert.equal(P.siteOf("https://redeem.df.garena.sg/cdkgarena.html?x=1"), "garena");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/vi/cdkredeem.html"), "intl");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/en/cdkredeem.html#top"), "intl");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/cdkredeem.html"), "intl");
+  assert.equal(P.siteOf("http://www.playdeltaforce.com/en/cdkredeem.html"), "");
+  assert.equal(P.siteOf("https://playdeltaforce.com/en/cdkredeem.html"), "");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/en/index.html"), "");
+  assert.equal(P.siteOf("https://www.playdeltaforce.com/en/cdkgarena.html"), "");
+  assert.equal(P.siteOf("https://redeem.df.garena.sg/vi/cdkredeem.html"), "");
+  assert.equal(P.siteOf("https://evil.example/www.playdeltaforce.com/en/cdkredeem.html"), "");
+  assert.equal(P.siteOf("không phải url"), "");
+  assert.ok(P.isRedeemUrl("https://www.playdeltaforce.com/vi/cdkredeem.html"));
+  assert.equal(P.siteOf(P.SITES.garena.page), "garena");
+  assert.equal(P.siteOf(P.SITES.intl.page), "intl");
+  assert.equal(P.normSite("intl"), "intl");
+  assert.equal(P.normSite(undefined), "garena");
+  assert.equal(P.normSite("lạ"), "garena");
+});
+
+test("lượt log ghi bản; log cũ không ghi bản là của Garena", () => {
+  const a = P.toEntry("DFINTL01", { source: "api", raw: { code: 0, msg: "ok" } }, new Date(NOW), "intl");
+  assert.equal(a.site, "intl");
+  const b = P.toEntry("DFGRNA01", { source: "api", raw: { code: 0, msg: "ok" } }, new Date(NOW));
+  assert.equal(b.site, "garena");
+  assert.equal(P.normalizeEntry({ code: "DFOLD001", status: "ok", at: new Date(NOW).toISOString() }).site, "garena");
+  assert.equal(P.normalizeEntry({ code: "DFOLD001", status: "ok", site: "intl" }).site, "intl");
+});
+
+test("bỏ qua code đã có trong log chỉ tính trong cùng một bản", () => {
+  const log = [
+    { code: "DFSAME01", status: "error", at: new Date(NOW - HOUR).toISOString(), detail: "x" },
+    { code: "DFSAME02", status: "ok", at: new Date(NOW - HOUR).toISOString(), detail: "x", site: "intl" },
+  ];
+  const codes = ["DFSAME01", "DFSAME02", "DFNEW001"];
+  const g = P.plan({ codes: codes, log: log, settings: { protect: true }, attempts: [], now: NOW, site: "garena" });
+  assert.deepEqual(g.queue, ["DFSAME02", "DFNEW001"]);
+  const i = P.plan({ codes: codes, log: log, settings: { protect: true }, attempts: [], now: NOW, site: "intl" });
+  assert.deepEqual(i.queue, ["DFSAME01", "DFNEW001"]);
+  assert.deepEqual(P.overlap(codes, log, "garena"), { ok: 0, error: 1, unknown: 0, fresh: 2 });
+  assert.deepEqual(P.overlap(codes, log, "intl"), { ok: 1, error: 0, unknown: 0, fresh: 2 });
+  /* Không ghi bản: như trước, tính mọi lượt. */
+  assert.deepEqual(P.overlap(codes, log), { ok: 1, error: 1, unknown: 0, fresh: 1 });
+});
+
+test("mã trang không coi là lỗi (601008, 503601) và hết phiên (300001) ghi chưa rõ ở cả hai bản", () => {
+  for (const code of [601008, 503601, 300001]) {
+    assert.equal(P.describeApi({ code: code, msg: "" }).status, "unknown");
+    for (const site of ["garena", "intl"]) {
+      const e = P.toEntry("DFSILENT1", { source: "api", raw: { code: code } }, new Date(NOW), site);
+      assert.equal(e.status, "unknown");
+      assert.equal(P.judge(e, { source: "api", raw: { code: code } }, {}, { protect: true }).action, "stop");
+    }
+  }
+  assert.equal(P.describeApi({ code: 400068, msg: "CDK đã đạt giới hạn đổi." }).status, "error");
+});
+
+test("câu của trang quốc tế: thành công, lỗi, lỗi mạng (giới hạn tần suất)", () => {
+  const ok = P.toEntry("DFINTL02", { source: "api", raw: { code: 0, msg: "ok", screen: "Đã nhận thành công! Vui lòng kiểm tra hộp thư trong game của bạn." } }, new Date(NOW), "intl");
+  assert.equal(ok.status, "ok");
+  const bad = P.toEntry("DFINTL03", { source: "api", raw: { code: 400054, screen: "CDKey đã nhập không hợp lệ. Vui lòng thử lại." } }, new Date(NOW), "intl");
+  assert.equal(bad.status, "error");
+  const raw = { code: 400086, msg: "frequency limit", screen: "Lỗi mạng, vui lòng thử lại sau" };
+  const busy = P.toEntry("DFINTL04", { source: "api", raw: raw }, new Date(NOW), "intl");
+  assert.equal(busy.status, "unknown");
+  assert.equal(P.judge(busy, { source: "api", raw: raw }, {}, { protect: true }).action, "stop");
+});
+
+test("file log giữ bản của từng lượt khi xuất rồi nạp lại", () => {
+  const list = [
+    { id: "a", code: "DFBOTH01", status: "error", at: new Date(NOW - 3 * MIN).toISOString(), detail: "Lỗi G", site: "garena" },
+    { id: "b", code: "DFBOTH01", status: "ok", at: new Date(NOW - 2 * MIN).toISOString(), detail: "Thành công", site: "intl" },
+    { id: "c", code: "DFINTL05", status: "unknown", at: new Date(NOW - MIN).toISOString(), detail: "Lỗi mạng", site: "intl" },
+  ];
+  const text = P.formatLog(list, { exportedAt: new Date(NOW).toISOString() });
+  assert.match(text, /=== QUỐC TẾ — DÙNG ĐƯỢC \(1\) ===\nDFBOTH01\n/);
+  assert.match(text, /=== LỖI \(1\) ===\nDFBOTH01\t/);
+  assert.match(text, /\[OK\] QT \S+ \S+\s+DFBOTH01/);
+  const back = P.parseLog(text);
+  assert.equal(back.length, 3);
+  const key = (e) => e.site + "|" + e.code + "|" + e.status;
+  assert.deepEqual(back.map(key).sort(), ["garena|DFBOTH01|error", "intl|DFBOTH01|ok", "intl|DFINTL05|unknown"]);
+  const merged = P.mergeLogs(list, back);
+  assert.equal(merged.length, 3);
+  /* Chỉ có phần tóm tắt (CHI TIẾT bị cắt): vẫn biết code nào của bản nào. */
+  const head = text.split("=== CHI TIẾT ===")[0];
+  assert.deepEqual(P.parseLog(head).map(key).sort(), ["garena|DFBOTH01|error", "intl|DFBOTH01|ok", "intl|DFINTL05|unknown"]);
+  /* Log chỉ có Garena: không có mục QUỐC TẾ, giống bản cũ. */
+  assert.doesNotMatch(P.formatLog([list[0]], {}), /QUỐC TẾ|\bQT\b/);
+});
