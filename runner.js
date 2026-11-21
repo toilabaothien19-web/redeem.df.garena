@@ -13,8 +13,8 @@
   const K = P.KEYS;
   const CHANNEL = "dfcode-garena-v2";
   const VERSION = chrome.runtime.getManifest().version;
-  /* Bản đang mở: "garena" hoặc "intl" (trang quốc tế, thử nghiệm). */
-  const SITE = P.siteOf(location.href) || "garena";
+  /* Lượt log ghi bản "garena" để không lẫn với lượt bản quốc tế nạp từ file log của bản 1.1.0. */
+  const SITE = "garena";
 
   const state = {
     running: false,
@@ -90,8 +90,6 @@
     if (loggedOut && shown(loggedOut)) return false;
     const loggedIn = document.querySelector("#logined");
     if (!loggedIn || !shown(loggedIn)) return false;
-    /* Trang quốc tế: ô UID (.state-after đầu tiên) bị ẩn khi đã đăng nhập, chỉ cần có ô nhập CDK. */
-    if (SITE === "intl") return !!document.querySelector("input#cdkey");
     const after = document.querySelector(".state-after");
     if (after && !shown(after)) return false;
     return !!document.querySelector("input.exc-input, .exc-input");
@@ -324,9 +322,6 @@
     state.starting = true;
     try {
       if (!P.isRedeemUrl(location.href)) return { ok: false, reason: "Không phải trang đổi code." };
-      if (msg.site && P.normSite(msg.site) !== SITE) {
-        return { ok: false, reason: "Tab này là trang đổi code bản " + P.SITES[SITE].label + ", khác bản đang chọn trong popup." };
-      }
       const list = Array.isArray(msg.codes) ? msg.codes.slice(0, P.LIMITS.maxCodes) : [];
       const text = list.map(function (c) { return String(c == null ? "" : c).slice(0, 200); }).join("\n");
       const codes = P.analyzeCodes(text).codes;
@@ -383,7 +378,7 @@
   chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     if (!fromPopup(sender) || !msg || typeof msg.kind !== "string") return;
     if (msg.kind === "probe") {
-      sendResponse({ ok: true, loggedIn: isLoggedIn(), running: state.running, version: VERSION, site: SITE });
+      sendResponse({ ok: true, loggedIn: isLoggedIn(), running: state.running, version: VERSION });
       return;
     }
     if (msg.kind === "stop") {

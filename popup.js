@@ -13,7 +13,7 @@
 
   const el = {};
   [
-    "ver", "mark", "status", "statusBox", "statusAction", "edGarena", "edIntl", "editionNote", "noteGarena", "noteIntl", "codes", "count", "parseNote", "pick", "demo", "clearCodes", "file",
+    "ver", "status", "statusBox", "statusAction", "codes", "count", "parseNote", "pick", "demo", "clearCodes", "file",
     "suspects", "suspectTitle", "suspectList", "suspectMore", "suspectHint", "fixSuspects",
     "protect", "protectInfo", "freePace", "randomGap", "gapBlock", "gap", "gapValue", "skipLogged",
     "statTotal", "statFresh", "statQueue", "skipNote", "quota", "eta", "start", "stop", "progressBox", "barWrap", "bar", "runTally",
@@ -26,8 +26,7 @@
     run: null,
     attempts: [],
     meta: {},
-    tab: { id: null, state: hasChrome ? "checking" : "preview", running: false, site: "" },
-    edition: "garena",
+    tab: { id: null, state: hasChrome ? "checking" : "preview", running: false },
     filter: "all",
     flash: null,
     starting: false,
@@ -202,10 +201,13 @@
     return analysisCache.value;
   }
 
-  let overlapCache = { log: null, codes: null, site: "", value: null };
-  function overlapNow(codes, site) {
-    if (overlapCache.log !== model.log || overlapCache.codes !== codes || overlapCache.site !== site) {
-      overlapCache = { log: model.log, codes: codes, site: site, value: P.overlap(codes, model.log, site) };
+  /* Chỉ tính lượt của bản Garena: lượt bản quốc tế nạp từ file log của bản 1.1.0 không làm bỏ qua code. */
+  const SITE = "garena";
+
+  let overlapCache = { log: null, codes: null, value: null };
+  function overlapNow(codes) {
+    if (overlapCache.log !== model.log || overlapCache.codes !== codes) {
+      overlapCache = { log: model.log, codes: codes, value: P.overlap(codes, model.log, SITE) };
     }
     return overlapCache.value;
   }
@@ -226,16 +228,6 @@
     return P.isRunActive(model.run, now || Date.now());
   }
 
-  /* Bản đang dùng: bản của phiên đang chạy, nếu không thì bản đã chọn. */
-  function edition(now) {
-    if (runActive(now) && model.run) return P.normSite(model.run.site);
-    return P.normSite(model.edition);
-  }
-
-  function siteName(site) {
-    return P.normSite(site) === "intl" ? "quốc tế" : "Garena";
-  }
-
   /* ---------- Vẽ ---------- */
 
   function renderSettings() {
@@ -249,26 +241,6 @@
     el.randomGap.disabled = active;
     el.gap.disabled = active;
     el.skipLogged.disabled = active;
-  }
-
-  function renderEdition(now) {
-    const site = edition(now);
-    const locked = runActive(now) || model.starting;
-    [el.edGarena, el.edIntl].forEach(function (btn) {
-      const on = btn.dataset.site === site;
-      btn.setAttribute("aria-checked", on ? "true" : "false");
-      btn.tabIndex = on ? 0 : -1;
-      btn.disabled = locked && !on;
-    });
-    el.editionNote.dataset.site = site;
-    if (document.body.dataset.site !== site) {
-      document.body.dataset.site = site;
-      el.mark.src = P.iconPaths(site)[48];
-    }
-    el.noteGarena.hidden = site !== "garena";
-    el.noteIntl.hidden = site !== "intl";
-    el.demo.disabled = site === "intl";
-    el.demo.title = site === "intl" ? "Demo Code là code bản Garena, không dùng được ở bản quốc tế." : "";
   }
 
   function setStatus(text, toneName, action) {
@@ -288,39 +260,26 @@
       return;
     }
     if (runActive(now)) {
-      const which = edition(now) === "intl" ? " (bản quốc tế)" : "";
       setStatus(
         model.tab.running
-          ? "Đang nhập code" + which + " trên trang này. Đóng popup không làm dừng."
-          : "Đang nhập code" + which + " ở một tab đổi quà khác. Bấm Dừng nếu muốn dừng.",
+          ? "Đang nhập code trên trang này. Đóng popup không làm dừng."
+          : "Đang nhập code ở một tab đổi quà khác. Bấm Dừng nếu muốn dừng.",
         "run",
       );
       return;
     }
-    const site = edition(now);
     switch (model.tab.state) {
       case "other":
-        setStatus("Chỉ chạy trên trang đổi code bản " + siteName(site) + ".", "warn", "Mở trang");
-        break;
-      case "otherSite":
-        setStatus(
-          "Tab này là trang đổi code bản " + siteName(model.tab.site) + ", nhưng đang chọn bản " + siteName(site) + ".",
-          "warn",
-          "Chọn bản " + siteName(model.tab.site),
-        );
+        setStatus("Chỉ chạy trên trang đổi code Garena.", "warn", "Mở trang");
         break;
       case "reload":
         setStatus("Trang đổi code cần tải lại (F5) để tiện ích kết nối.", "warn", "Tải lại");
         break;
       case "loggedOut":
-        setStatus(site === "intl"
-          ? "Trang quốc tế đang mở nhưng chưa đăng nhập. Bấm Log In trên trang (không dùng ô UID)."
-          : "Trang đang mở nhưng chưa đăng nhập Garena.", "warn");
+        setStatus("Trang đang mở nhưng chưa đăng nhập Garena.", "warn");
         break;
       case "ready":
-        setStatus(site === "intl"
-          ? "Sẵn sàng trên trang đổi code quốc tế (thử nghiệm)."
-          : "Sẵn sàng trên trang đổi code Garena.", "ready");
+        setStatus("Sẵn sàng trên trang đổi code.", "ready");
         break;
       default:
         setStatus("Đang kiểm tra trang…", "idle");
@@ -389,8 +348,7 @@
     renderSuspects(a);
     const s = settings();
     const active = runActive(now);
-    const site = edition(now);
-    const pl = P.plan({ codes: a.codes, log: model.log, settings: s, attempts: model.attempts, now: now, site: site });
+    const pl = P.plan({ codes: a.codes, log: model.log, settings: s, attempts: model.attempts, now: now, site: SITE });
     const room = Math.min(pl.fresh, pl.perRun, pl.quota.left);
 
     put(el.count, a.codes.length + " code");
@@ -403,7 +361,7 @@
 
     tickStat(el.statTotal, a.codes.length);
     tickStat(el.statFresh, pl.fresh);
-    put(el.skipNote, describeOverlap(overlapNow(a.codes, site), s.skipLogged));
+    put(el.skipNote, describeOverlap(overlapNow(a.codes), s.skipLogged));
     tickStat(el.statQueue, active ? Math.max(0, (model.run.total || 0) - (model.run.index || 0)) : room);
 
     const q = pl.quota;
@@ -496,7 +454,7 @@
     if (P.normSite(e.site) === "intl") {
       const where = document.createElement("span");
       where.className = "where";
-      where.title = "Bản quốc tế";
+      where.title = "Lượt của bản quốc tế, nạp từ file log";
       where.textContent = "QT";
       code.appendChild(where);
     }
@@ -579,7 +537,6 @@
   function renderDynamic() {
     const now = Date.now();
     renderLogButtons(now);
-    renderEdition(now);
     renderSettings();
     renderStatus(now);
     renderPlan(now);
@@ -605,20 +562,15 @@
     /* Không có quyền đọc địa chỉ tab thì hỏi thẳng tab: chỉ trang đổi code mới có runner.js để trả lời. */
     const knownUrl = !!(tab && tab.url);
     if (!tab || !tab.id || (knownUrl && !P.isRedeemUrl(tab.url))) {
-      model.tab = { id: null, state: "other", running: false, site: "" };
+      model.tab = { id: null, state: "other", running: false };
     } else {
       const res = await send(tab.id, { kind: "probe" });
-      const site = res && res.ok && res.site ? P.normSite(res.site) : knownUrl ? P.siteOf(tab.url) : "";
       if (res && res.ok) {
-        model.tab = { id: tab.id, state: res.loggedIn ? "ready" : "loggedOut", running: !!res.running, site: site };
+        model.tab = { id: tab.id, state: res.loggedIn ? "ready" : "loggedOut", running: !!res.running };
       } else if (!knownUrl) {
-        model.tab = { id: null, state: "other", running: false, site: "" };
+        model.tab = { id: null, state: "other", running: false };
       } else {
-        model.tab = { id: tab.id, state: tab.status === "loading" ? "checking" : "reload", running: false, site: site };
-      }
-      /* Trang của bản kia: không chạy, chỉ gợi ý chuyển bản (trừ khi tab đang chạy chính phiên của nó). */
-      if (model.tab.site && model.tab.site !== edition() && !model.tab.running && model.tab.state !== "checking") {
-        model.tab.state = "otherSite";
+        model.tab = { id: tab.id, state: tab.status === "loading" ? "checking" : "reload", running: false };
       }
     }
     renderDynamic();
@@ -633,15 +585,6 @@
       [K.skipLogged]: el.skipLogged.checked,
       [K.protect]: el.protect.checked,
     });
-  }
-
-  function chooseEdition(site) {
-    const next = P.normSite(site);
-    if (runActive() || model.starting || next === model.edition) return;
-    model.edition = next;
-    storageSet({ [K.edition]: next });
-    renderDynamic();
-    refreshTab();
   }
 
   function persistDraft() {
@@ -662,7 +605,6 @@
     if (typeof data[K.random] === "boolean") el.randomGap.checked = data[K.random];
     if (typeof data[K.skipLogged] === "boolean") el.skipLogged.checked = data[K.skipLogged];
     if (typeof data[K.protect] === "boolean") el.protect.checked = data[K.protect];
-    if (typeof data[K.edition] === "string") model.edition = P.normSite(data[K.edition]);
     if (K.attempts in data) model.attempts = Array.isArray(data[K.attempts]) ? data[K.attempts] : [];
     if (K.meta in data) model.meta = data[K.meta] && typeof data[K.meta] === "object" ? data[K.meta] : {};
     if (K.run in data) model.run = data[K.run] && typeof data[K.run] === "object" ? data[K.run] : null;
@@ -696,24 +638,11 @@
     });
   });
 
-  [el.edGarena, el.edIntl].forEach(function (btn) {
-    btn.addEventListener("click", function () { chooseEdition(btn.dataset.site); });
-    btn.addEventListener("keydown", function (event) {
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-      event.preventDefault();
-      const other = btn === el.edGarena ? el.edIntl : el.edGarena;
-      chooseEdition(other.dataset.site);
-      if (!other.disabled) other.focus();
-    });
-  });
-
   el.statusAction.addEventListener("click", function () {
     if (!hasChrome) return;
     if (model.tab.state === "other") {
-      chrome.tabs.create({ url: P.SITES[edition()].page });
+      chrome.tabs.create({ url: P.REDEEM_PAGE });
       window.close();
-    } else if (model.tab.state === "otherSite" && model.tab.site) {
-      chooseEdition(model.tab.site);
     } else if (model.tab.state === "reload" && model.tab.id) {
       chrome.tabs.reload(model.tab.id);
       model.tab.state = "checking";
@@ -741,7 +670,6 @@
   });
 
   el.demo.addEventListener("click", async function () {
-    if (edition() === "intl") return;
     const list = Array.isArray(window.DFDemoCodes) ? window.DFDemoCodes : [];
     if (!list.length) {
       flash("Không nạp được Demo Code.", "bad");
@@ -788,8 +716,7 @@
     if (!hasChrome || model.starting || model.tab.state !== "ready" || !model.tab.id) return;
     const a = analysis();
     const s = settings();
-    const site = edition();
-    const pl = P.plan({ codes: a.codes, log: model.log, settings: s, attempts: model.attempts, now: Date.now(), site: site });
+    const pl = P.plan({ codes: a.codes, log: model.log, settings: s, attempts: model.attempts, now: Date.now(), site: SITE });
     if (!pl.ok) {
       flash(pl.reason, "warn");
       return;
@@ -802,14 +729,6 @@
       );
       if (!go) return;
     }
-    if (site === "intl") {
-      const ok = await ask(
-        "Bản quốc tế đang thử nghiệm. Tiện ích sẽ đổi " + pl.queue.length + " code bằng tài khoản đang đăng nhập trên trang quốc tế."
-          + " Code bản Garena không dùng được ở đây (hai bản khác mã game). Tiếp tục?",
-        "Bắt đầu thử",
-      );
-      if (!ok) return;
-    }
     if (!s.protect) {
       const ok = await ask(
         "Đã tắt bảo vệ tài khoản. Lần này nhập tối đa " + pl.queue.length
@@ -821,7 +740,7 @@
     model.starting = true;
     flash("Đang bắt đầu…");
     renderDynamic();
-    const res = await send(model.tab.id, { kind: "start", codes: a.codes, settings: s, site: site });
+    const res = await send(model.tab.id, { kind: "start", codes: a.codes, settings: s });
     model.starting = false;
     if (!res || !res.ok) {
       flash((res && res.reason) || "Không gửi được lệnh. Tải lại trang đổi code (F5).", "bad");
@@ -882,7 +801,7 @@
       await storageSet({ [K.log]: merged });
       if (!hasChrome) apply({ [K.log]: merged });
       const codes = analysis().codes;
-      const ov = P.overlap(codes, merged, edition());
+      const ov = P.overlap(codes, merged, SITE);
       let text = "Đã đọc " + incoming.length + " lượt từ file, thêm " + added + " lượt mới.";
       if (codes.length) text += " Đối chiếu danh sách hiện tại: " + (ov.ok + ov.error) + " code đã có trong log, " + (ov.fresh + ov.unknown) + " code sẽ nhập.";
       flash(text, "ok");
@@ -921,7 +840,7 @@
 
   if (hasChrome) {
     chrome.storage.local.get(
-      [K.draft, K.gap, K.random, K.skipLogged, K.protect, K.edition, K.log, K.meta, K.run, K.attempts],
+      [K.draft, K.gap, K.random, K.skipLogged, K.protect, K.log, K.meta, K.run, K.attempts],
       function (data) {
         const stored = data || {};
         /* Quên bấm tải lại sau khi cập nhật thì service worker cũ không sửa log: popup tự sửa khi không có phiên chạy. */

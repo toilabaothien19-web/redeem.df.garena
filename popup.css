@@ -7,7 +7,7 @@
   --line: #2c3729;
   --fg: #e8efe4;
   --muted: #98a690;
-  /* Màu theo theme trang FADEX.VN: xanh lá Delta Force (.is-df). Bản quốc tế dùng xanh dương mặc định của trang. */
+  /* Màu theo theme trang FADEX.VN: xanh lá Delta Force (.is-df). */
   --accent: #0ff796;
   --accent-light: #7bfbc5;
   --accent-soft: rgba(15, 247, 150, 0.12);
@@ -18,13 +18,6 @@
   --warn: #f4bf4f;
   --warn-soft: rgba(244, 191, 79, 0.12);
   --radius: 10px;
-}
-
-body[data-site="intl"] {
-  --accent: #0079d5;
-  --accent-light: #4da1e2;
-  --accent-soft: rgba(0, 121, 213, 0.16);
-  --ink: #ffffff;
 }
 
 * { box-sizing: border-box; }
@@ -180,61 +173,6 @@ button:focus-visible {
 .note.bad { color: var(--danger); }
 .note.ok { color: var(--ok); }
 
-/* ---------- Chọn bản ---------- */
-
-.edition {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--bg);
-}
-
-.seg {
-  min-height: 32px;
-  padding: 0 6px;
-  border-color: transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.seg:hover:not(:disabled) { background: var(--surface-2); color: var(--fg); }
-.seg[aria-checked="true"],
-.seg[aria-checked="true"]:hover:not(:disabled) { background: var(--accent); color: var(--ink); }
-.seg:disabled { opacity: 0.6; }
-.seg[aria-checked="true"]:disabled { opacity: 1; }
-
-.pill.test { margin-left: 2px; background: var(--warn-soft); color: var(--warn); }
-.seg[aria-checked="true"] .pill.test { background: rgba(255, 255, 255, 0.2); color: inherit; }
-
-.edition-note {
-  margin: 6px 0 8px;
-  padding: 6px 8px 6px 4px;
-  border-left: 2px solid var(--accent);
-  color: var(--muted);
-  font-size: 11.5px;
-  line-height: 1.45;
-}
-
-.edition-note[data-site="intl"] { background: var(--accent-soft); border-radius: 0 6px 6px 0; }
-.edition-note ul { margin: 0; padding-left: 18px; }
-.edition-note li + li { margin-top: 2px; }
-
-.log .where {
-  margin-right: 4px;
-  padding: 0 4px;
-  border-radius: 4px;
-  background: var(--warn-soft);
-  color: var(--warn);
-  font-size: 10px;
-  font-weight: 700;
-}
-
 /* ---------- Cảnh báo ký tự sai ---------- */
 
 .suspects {
@@ -315,7 +253,6 @@ button.primary {
 }
 
 button.primary:hover:not(:disabled) { background: var(--accent-light); }
-body[data-site="intl"] button.primary:hover:not(:disabled) { background: #1a88dc; }
 
 #stop { min-height: 40px; min-width: 76px; }
 
@@ -495,6 +432,16 @@ button.small {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 12px;
   word-break: break-all;
+}
+
+.log .where {
+  margin-right: 4px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .log .tag { flex: none; font-size: 10.5px; font-weight: 600; }
